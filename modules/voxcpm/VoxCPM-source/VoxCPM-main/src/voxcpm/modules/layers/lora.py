@@ -27,7 +27,9 @@ class LoRALinear(nn.Module):
         dropout: float = 0.0,
     ):
         super().__init__()
-        assert isinstance(base, nn.Linear), "LoRALinear only supports wrapping nn.Linear."
+        assert isinstance(
+            base, nn.Linear
+        ), "LoRALinear only supports wrapping nn.Linear."
 
         self.in_features = base.in_features
         self.out_features = base.out_features
@@ -37,7 +39,9 @@ class LoRALinear(nn.Module):
 
         # 使用 buffer 存储 scaling，这样修改值不会触发 torch.compile 重编译
         # persistent=False 表示不保存到 state_dict，避免加载时 missing key
-        self.register_buffer("scaling", torch.tensor(self._base_scaling), persistent=False)
+        self.register_buffer(
+            "scaling", torch.tensor(self._base_scaling), persistent=False
+        )
 
         # 直接持有 weight 和 bias（从原始 Linear 转移过来）
         self.weight = base.weight

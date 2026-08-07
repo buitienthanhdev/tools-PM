@@ -1,13 +1,14 @@
+import logging
 import os
+import random
 import re
 import sys
-import logging
-import random
-import numpy as np
-import gradio as gr
-from typing import Optional, Tuple
-from funasr import AutoModel
 from pathlib import Path
+from typing import Optional, Tuple
+
+import gradio as gr
+import numpy as np
+from funasr import AutoModel
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -160,7 +161,8 @@ for _d in _I18N_TRANSLATIONS.values():
 I18N = gr.I18n(**_I18N_TRANSLATIONS)
 
 DEFAULT_TARGET_TEXT = (
-    "VoxCPM2 is a creative multilingual TTS model from ModelBest, " "designed to generate highly realistic speech."
+    "VoxCPM2 is a creative multilingual TTS model from ModelBest, "
+    "designed to generate highly realistic speech."
 )
 
 _CUSTOM_CSS = """
@@ -252,7 +254,9 @@ class VoxCPMDemo:
     def get_or_load_asr_model(self) -> AutoModel:
         if self.asr_model is not None:
             return self.asr_model
-        logger.info(f"Loading ASR model: {self.asr_model_id} on device: {self.asr_device}")
+        logger.info(
+            f"Loading ASR model: {self.asr_model_id} on device: {self.asr_device}"
+        )
         self.asr_model = AutoModel(
             model=self.asr_model_id,
             disable_update=True,
@@ -330,7 +334,9 @@ class VoxCPMDemo:
         elif audio_path:
             logger.info(f"[Voice Control] reference_wav only")
         else:
-            logger.info(f"[Voice Design] control: {control[:50] if control else 'None'}...")
+            logger.info(
+                f"[Voice Design] control: {control[:50] if control else 'None'}..."
+            )
 
         logger.info(f"Generating audio for text: '{final_text[:80]}...'")
         generate_kwargs = self._build_generate_kwargs(
@@ -344,7 +350,9 @@ class VoxCPMDemo:
             seed=seed,
         )
         wav = current_model.generate(**generate_kwargs)
-        last_successful_seed = getattr(current_model.tts_model, "last_successful_seed", seed)
+        last_successful_seed = getattr(
+            current_model.tts_model, "last_successful_seed", seed
+        )
         return (current_model.tts_model.sample_rate, wav, last_successful_seed)
 
 
@@ -399,7 +407,9 @@ def create_demo_interface(demo: VoxCPMDemo):
         """Instant UI toggle — no ASR, no blocking."""
         if checked:
             return (
-                gr.update(visible=True, value="", placeholder="Recognizing reference audio..."),
+                gr.update(
+                    visible=True, value="", placeholder="Recognizing reference audio..."
+                ),
                 gr.update(visible=False),
             )
         return (
@@ -589,7 +599,7 @@ if __name__ == "__main__":
         type=str,
         default="0.0.0.0",
         help="Bind address. Use 127.0.0.1 to restrict access to the local machine; "
-             "the default 0.0.0.0 exposes the unauthenticated UI/API to the network (default: 0.0.0.0)",
+        "the default 0.0.0.0 exposes the unauthenticated UI/API to the network (default: 0.0.0.0)",
     )
     parser.add_argument(
         "--device",

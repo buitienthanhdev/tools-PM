@@ -2,19 +2,21 @@
 PM Tools Hub — Real-Time Status & Health Diagnostic
 """
 
-import sys
-import time
 import subprocess
-import urllib.request
+import time
 import urllib.error
+import urllib.request
 
 HEALTH_URL = "http://127.0.0.1:5000/api/health"
 PUBLIC_URL = "https://sonxit.io.vn/api/health"
 
+
 def check_url(url, label):
     start = time.time()
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'PMTools-StatusCheck/1.0'})
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "PMTools-StatusCheck/1.0"}
+        )
         with urllib.request.urlopen(req, timeout=5) as resp:
             elapsed = round((time.time() - start) * 1000, 1)
             if resp.status == 200:
@@ -30,9 +32,12 @@ def check_url(url, label):
         print(f"  [FAIL] {label:<20} -> {e}")
         return False
 
+
 def check_process(name, keyword):
     try:
-        out = subprocess.check_output(f'tasklist /FI "IMAGENAME eq {name}"', shell=True, text=True)
+        out = subprocess.check_output(
+            f'tasklist /FI "IMAGENAME eq {name}"', shell=True, text=True
+        )
         if name in out:
             print(f"  [OK] Process {name:<18} -> RUNNING")
             return True
@@ -43,11 +48,12 @@ def check_process(name, keyword):
         print(f"  [ERR] Process {name:<17} -> Error: {e}")
         return False
 
+
 def main():
     print("=" * 60)
     print("  PM Tools Hub — Uptime & System Health Status")
     print("=" * 60)
-    
+
     print("\n[Processes]")
     check_process("python.exe", "server.py")
     check_process("cloudflared.exe", "whisper-studio")
@@ -65,5 +71,6 @@ def main():
         print("  STATUS: SERVER DOWN OR UNRESPONSIVE")
     print("=" * 60 + "\n")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

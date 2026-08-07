@@ -85,12 +85,25 @@ def bootstrap_repo_modules(monkeypatch):
     monkeypatch.setitem(sys.modules, "transformers", transformers)
 
     internal_mods = {
-        "voxcpm.modules.audiovae": ["AudioVAE", "AudioVAEConfig", "AudioVAEV2", "AudioVAEConfigV2"],
+        "voxcpm.modules.audiovae": [
+            "AudioVAE",
+            "AudioVAEConfig",
+            "AudioVAEV2",
+            "AudioVAEConfigV2",
+        ],
         "voxcpm.modules.layers": ["ScalarQuantizationLayer"],
-        "voxcpm.modules.locdit": ["CfmConfig", "UnifiedCFM", "VoxCPMLocDiT", "VoxCPMLocDiTV2"],
+        "voxcpm.modules.locdit": [
+            "CfmConfig",
+            "UnifiedCFM",
+            "VoxCPMLocDiT",
+            "VoxCPMLocDiTV2",
+        ],
         "voxcpm.modules.locenc": ["VoxCPMLocEnc"],
         "voxcpm.modules.minicpm4": ["MiniCPM4Config", "MiniCPMModel"],
-        "voxcpm.modules.layers.lora": ["apply_lora_to_named_linear_modules", "LoRALinear"],
+        "voxcpm.modules.layers.lora": [
+            "apply_lora_to_named_linear_modules",
+            "LoRALinear",
+        ],
     }
     for modname, names in internal_mods.items():
         module = types.ModuleType(modname)
@@ -103,7 +116,9 @@ def bootstrap_repo_modules(monkeypatch):
 
     _load_module("voxcpm.model.utils", SRC / "voxcpm" / "model" / "utils.py")
     voxcpm = _load_module("voxcpm.model.voxcpm", SRC / "voxcpm" / "model" / "voxcpm.py")
-    voxcpm2 = _load_module("voxcpm.model.voxcpm2", SRC / "voxcpm" / "model" / "voxcpm2.py")
+    voxcpm2 = _load_module(
+        "voxcpm.model.voxcpm2", SRC / "voxcpm" / "model" / "voxcpm2.py"
+    )
     return voxcpm.VoxCPMModel, voxcpm2.VoxCPM2Model
 
 
@@ -115,7 +130,9 @@ class DummyModel:
 
 
 @pytest.mark.parametrize("module_name", ["v1", "v2"])
-def test_load_lora_weights_accepts_tensor_only_legacy_checkpoints(monkeypatch, tmp_path, module_name):
+def test_load_lora_weights_accepts_tensor_only_legacy_checkpoints(
+    monkeypatch, tmp_path, module_name
+):
     VoxCPMModel, VoxCPM2Model = bootstrap_repo_modules(monkeypatch)
     cls = VoxCPMModel if module_name == "v1" else VoxCPM2Model
 
@@ -129,7 +146,9 @@ def test_load_lora_weights_accepts_tensor_only_legacy_checkpoints(monkeypatch, t
 
 
 @pytest.mark.parametrize("module_name", ["v1", "v2"])
-def test_load_lora_weights_rejects_malicious_pickle_payloads(monkeypatch, tmp_path, module_name):
+def test_load_lora_weights_rejects_malicious_pickle_payloads(
+    monkeypatch, tmp_path, module_name
+):
     VoxCPMModel, VoxCPM2Model = bootstrap_repo_modules(monkeypatch)
     cls = VoxCPMModel if module_name == "v1" else VoxCPM2Model
 

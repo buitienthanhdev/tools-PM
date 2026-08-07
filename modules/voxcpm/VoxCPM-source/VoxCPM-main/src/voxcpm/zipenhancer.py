@@ -5,13 +5,14 @@ Provides on-demand import ZipEnhancer functionality for audio denoising processi
 Related dependencies are imported only when denoising functionality is needed.
 """
 
+import logging
 import os
 import shutil
-import logging
 import tempfile
 from typing import Optional
-import soundfile as sf
+
 import numpy as np
+import soundfile as sf
 from modelscope.pipelines import pipeline
 from modelscope.utils.constant import Tasks
 
@@ -21,7 +22,9 @@ logger = logging.getLogger(__name__)
 class ZipEnhancer:
     """ZipEnhancer Audio Denoising Enhancer"""
 
-    def __init__(self, model_path: str = "iic/speech_zipenhancer_ans_multiloss_16k_base"):
+    def __init__(
+        self, model_path: str = "iic/speech_zipenhancer_ans_multiloss_16k_base"
+    ):
         """
         Initialize ZipEnhancer
         Args:
@@ -29,7 +32,9 @@ class ZipEnhancer:
         """
         self.model_path = model_path
         try:
-            self._pipeline = pipeline(Tasks.acoustic_noise_suppression, model=self.model_path)
+            self._pipeline = pipeline(
+                Tasks.acoustic_noise_suppression, model=self.model_path
+            )
         except Exception as e:
             logger.warning(f"Failed to initialize ZipEnhancer pipeline: {e}")
             self._pipeline = None
@@ -49,7 +54,12 @@ class ZipEnhancer:
         except Exception as e:
             logger.warning(f"Loudness normalization skipped safely: {e}")
 
-    def enhance(self, input_path: str, output_path: Optional[str] = None, normalize_loudness: bool = True) -> str:
+    def enhance(
+        self,
+        input_path: str,
+        output_path: Optional[str] = None,
+        normalize_loudness: bool = True,
+    ) -> str:
         """
         Audio denoising enhancement
         Args:
@@ -67,7 +77,7 @@ class ZipEnhancer:
                 output_path = tmp_file.name
 
         try:
-            if hasattr(self, '_pipeline') and self._pipeline is not None:
+            if hasattr(self, "_pipeline") and self._pipeline is not None:
                 self._pipeline(input_path, output_path=output_path)
             else:
                 shutil.copyfile(input_path, output_path)
@@ -76,7 +86,9 @@ class ZipEnhancer:
                 self._normalize_loudness(output_path)
             return output_path
         except Exception as e:
-            logger.warning(f"ZipEnhancer processing encountered error ({e}). Falling back to raw reference audio.")
+            logger.warning(
+                f"ZipEnhancer processing encountered error ({e}). Falling back to raw reference audio."
+            )
             try:
                 shutil.copyfile(input_path, output_path)
                 if normalize_loudness:

@@ -11,8 +11,17 @@ Write-Host "  PM Tools Hub - FULL STOP, CLEAN AND RESET" -ForegroundColor Red
 Write-Host "============================================================" -ForegroundColor Red
 Write-Host ""
 
+# ── STEP 0: Stop Watchdog Supervisor ──────────────────────────
+Write-Host "[0/5] Stopping Watchdog supervisor..." -ForegroundColor Yellow
+Get-WmiObject Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue | Where-Object {
+    $_.CommandLine -like "*watchdog.py*"
+} | ForEach-Object {
+    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+    Write-Host "      OK: Stopped Watchdog PID $($_.ProcessId)" -ForegroundColor Green
+}
+
 # ── STEP 1: Kill cloudflared tunnel for Tools PM ──────────────
-Write-Host "[1/5] Stopping Cloudflare tunnel for Tools PM..." -ForegroundColor Yellow
+Write-Host "[1/5] Stopping Cloudflare tunnel..." -ForegroundColor Yellow
 Get-WmiObject Win32_Process -Filter "Name='cloudflared.exe'" -ErrorAction SilentlyContinue | Where-Object {
     $_.CommandLine -like "*whisper-studio*" -or $_.CommandLine -like "*tools PM*" -or $_.CommandLine -like "*cloudflared-config.yml*"
 } | ForEach-Object {
@@ -20,14 +29,14 @@ Get-WmiObject Win32_Process -Filter "Name='cloudflared.exe'" -ErrorAction Silent
     Write-Host "      OK: Stopped cloudflared PID $($_.ProcessId)" -ForegroundColor Green
 }
 
-# ── STEP 2: Kill Python server on port 5000 for Tools PM ──────
+# ── STEP 2: Kill Python server on port 5000 ───────────────────
 Write-Host "[2/5] Stopping Python server on port 5000..." -ForegroundColor Yellow
 $netstat = Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue
 if ($netstat) {
     $netstat | ForEach-Object {
         $procId = $_.OwningProcess
         $proc = Get-WmiObject Win32_Process -Filter "ProcessId=$procId" -ErrorAction SilentlyContinue
-        if ($proc -and ($proc.CommandLine -like "*tools PM*" -or $proc.ExecutablePath -like "*tools PM*" -or $proc.CommandLine -like "*server.py*")) {
+        if ($proc -and ($proc.CommandLine -like "*tools PM*" -or $proc.ExecutablePath -like "*tools PM*" -or $proc.CommandLine -like "*server.py*" -or $proc.CommandLine -like "*app.py*")) {
             Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
             Write-Host "      OK: Port 5000 process (PID $procId) stopped." -ForegroundColor Green
         }
@@ -36,9 +45,9 @@ if ($netstat) {
     Write-Host "      (No process on port 5000)" -ForegroundColor Gray
 }
 
-# Also kill any stray python.exe running server.py, app.py or watchdog.py from Tools PM
+# Also kill any stray python.exe running server.py, app.py or watchdog.py
 Get-WmiObject Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*tools PM*") -and ($_.CommandLine -like "*server.py*" -or $_.CommandLine -like "*app.py*" -or $_.CommandLine -like "*watchdog.py*")
+    $_.CommandLine -like "*server.py*" -or $_.CommandLine -like "*app.py*" -or $_.CommandLine -like "*watchdog.py*"
 } | ForEach-Object {
     Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
     Write-Host "      Killed Python PID $($_.ProcessId)" -ForegroundColor Gray

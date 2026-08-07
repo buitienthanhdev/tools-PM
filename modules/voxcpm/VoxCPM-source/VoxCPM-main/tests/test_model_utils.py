@@ -62,9 +62,13 @@ def test_materialize_generation_seed_creates_concrete_seed_for_none(monkeypatch)
 def test_apply_generation_seed_sets_cpu_and_cuda_rng(monkeypatch):
     calls = []
 
-    monkeypatch.setattr(utils.torch, "manual_seed", lambda seed: calls.append(("cpu", seed)))
+    monkeypatch.setattr(
+        utils.torch, "manual_seed", lambda seed: calls.append(("cpu", seed))
+    )
     monkeypatch.setattr(utils.torch.cuda, "is_available", lambda: True)
-    monkeypatch.setattr(utils.torch.cuda, "manual_seed_all", lambda seed: calls.append(("cuda", seed)))
+    monkeypatch.setattr(
+        utils.torch.cuda, "manual_seed_all", lambda seed: calls.append(("cuda", seed))
+    )
 
     utils.apply_generation_seed(123)
 

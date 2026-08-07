@@ -16,7 +16,8 @@ class StableTSAligner:
             import stable_whisper
         except ImportError as exc:
             raise ImportError(
-                "stable-ts is required for timestamp alignment. " 'Install with: pip install "voxcpm[timestamps]"'
+                "stable-ts is required for timestamp alignment. "
+                'Install with: pip install "voxcpm[timestamps]"'
             ) from exc
 
         self.model = stable_whisper.load_model(model_name, device=device)

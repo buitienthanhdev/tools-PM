@@ -1,21 +1,25 @@
-import os
-import sys
-import re
 import json
+import os
+import re
+import sys
 import tempfile
-import numpy as np
 from typing import Generator, Optional
+
+import numpy as np
 from huggingface_hub import snapshot_download
-from .model.voxcpm import VoxCPMModel, LoRAConfig
-from .model.voxcpm2 import VoxCPM2Model
+
 from .model.utils import next_and_close
+from .model.voxcpm import LoRAConfig, VoxCPMModel
+from .model.voxcpm2 import VoxCPM2Model
 
 
 class VoxCPM:
     def __init__(
         self,
         voxcpm_model_path: str,
-        zipenhancer_model_path: str | None = "iic/speech_zipenhancer_ans_multiloss_16k_base",
+        zipenhancer_model_path: (
+            str | None
+        ) = "iic/speech_zipenhancer_ans_multiloss_16k_base",
         enable_denoiser: bool = True,
         optimize: bool = True,
         device: str | None = None,
@@ -54,8 +58,13 @@ class VoxCPM:
                     lora_config = LoRAConfig(**json.load(f)["lora_config"])
                 print(f"Loaded LoRAConfig from: {cfg_path}", file=sys.stderr)
             else:
-                lora_config = LoRAConfig(enable_lm=True, enable_dit=True, enable_proj=False)
-                print(f"Auto-created default LoRAConfig for loading weights from: {lora_weights_path}", file=sys.stderr)
+                lora_config = LoRAConfig(
+                    enable_lm=True, enable_dit=True, enable_proj=False
+                )
+                print(
+                    f"Auto-created default LoRAConfig for loading weights from: {lora_weights_path}",
+                    file=sys.stderr,
+                )
 
         # Determine model type from config.json architecture field
         config_path = os.path.join(voxcpm_model_path, "config.json")
@@ -85,8 +94,13 @@ class VoxCPM:
         # Load LoRA weights if path is provided
         if lora_weights_path is not None:
             print(f"Loading LoRA weights from: {lora_weights_path}", file=sys.stderr)
-            loaded_keys, skipped_keys = self.tts_model.load_lora_weights(lora_weights_path)
-            print(f"Loaded {len(loaded_keys)} LoRA parameters, skipped {len(skipped_keys)}", file=sys.stderr)
+            loaded_keys, skipped_keys = self.tts_model.load_lora_weights(
+                lora_weights_path
+            )
+            print(
+                f"Loaded {len(loaded_keys)} LoRA parameters, skipped {len(skipped_keys)}",
+                file=sys.stderr,
+            )
 
         self.text_normalizer = None
         self.denoiser = None
@@ -230,14 +244,20 @@ class VoxCPM:
 
         if prompt_wav_path is not None:
             if not os.path.exists(prompt_wav_path):
-                raise FileNotFoundError(f"prompt_wav_path does not exist: {prompt_wav_path}")
+                raise FileNotFoundError(
+                    f"prompt_wav_path does not exist: {prompt_wav_path}"
+                )
 
         if reference_wav_path is not None:
             if not os.path.exists(reference_wav_path):
-                raise FileNotFoundError(f"reference_wav_path does not exist: {reference_wav_path}")
+                raise FileNotFoundError(
+                    f"reference_wav_path does not exist: {reference_wav_path}"
+                )
 
         if (prompt_wav_path is None) != (prompt_text is None):
-            raise ValueError("prompt_wav_path and prompt_text must both be provided or both be None")
+            raise ValueError(
+                "prompt_wav_path and prompt_text must both be provided or both be None"
+            )
 
         is_v2 = isinstance(self.tts_model, VoxCPM2Model)
         if reference_wav_path is not None and not is_v2:
@@ -253,14 +273,20 @@ class VoxCPM:
 
             if denoise and self.denoiser is not None:
                 if prompt_wav_path is not None:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                    with tempfile.NamedTemporaryFile(
+                        delete=False, suffix=".wav"
+                    ) as tmp:
                         temp_files.append(tmp.name)
                     self.denoiser.enhance(prompt_wav_path, output_path=temp_files[-1])
                     actual_prompt_path = temp_files[-1]
                 if reference_wav_path is not None:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                    with tempfile.NamedTemporaryFile(
+                        delete=False, suffix=".wav"
+                    ) as tmp:
                         temp_files.append(tmp.name)
-                    self.denoiser.enhance(reference_wav_path, output_path=temp_files[-1])
+                    self.denoiser.enhance(
+                        reference_wav_path, output_path=temp_files[-1]
+                    )
                     actual_ref_path = temp_files[-1]
 
             if actual_prompt_path is not None or actual_ref_path is not None:

@@ -427,7 +427,9 @@ def test_batch_writes_one_timestamp_json_per_output(monkeypatch, tmp_path):
             "backend": kwargs["backend"],
             "level": kwargs["level"],
             "text": kwargs["text"],
-            "items": [{"text": kwargs["text"], "start": 0.0, "end": 0.5, "level": "word"}],
+            "items": [
+                {"text": kwargs["text"], "start": 0.0, "end": 0.5, "level": "word"}
+            ],
             "warning": None,
         }
 
@@ -451,8 +453,12 @@ def test_batch_writes_one_timestamp_json_per_output(monkeypatch, tmp_path):
         ],
     )
 
-    first = json.loads((output_dir / "output_001.timestamps.json").read_text(encoding="utf-8"))
-    second = json.loads((output_dir / "output_002.timestamps.json").read_text(encoding="utf-8"))
+    first = json.loads(
+        (output_dir / "output_001.timestamps.json").read_text(encoding="utf-8")
+    )
+    second = json.loads(
+        (output_dir / "output_002.timestamps.json").read_text(encoding="utf-8")
+    )
     assert first["text"] == "hello"
     assert second["text"] == "world"
 
@@ -590,7 +596,10 @@ def test_clone_rejects_prompt_audio_without_transcript(monkeypatch, tmp_path, ca
     with pytest.raises(SystemExit):
         cli.main()
 
-    assert "--prompt-audio requires --prompt-text or --prompt-file" in capsys.readouterr().err
+    assert (
+        "--prompt-audio requires --prompt-text or --prompt-file"
+        in capsys.readouterr().err
+    )
 
 
 def test_clone_rejects_transcript_without_prompt_audio(monkeypatch, tmp_path, capsys):
@@ -612,7 +621,9 @@ def test_clone_rejects_transcript_without_prompt_audio(monkeypatch, tmp_path, ca
     with pytest.raises(SystemExit):
         cli.main()
 
-    assert "--prompt-text/--prompt-file requires --prompt-audio" in capsys.readouterr().err
+    assert (
+        "--prompt-text/--prompt-file requires --prompt-audio" in capsys.readouterr().err
+    )
 
 
 def test_batch_rejects_control_with_prompt_transcript(monkeypatch, tmp_path, capsys):
@@ -685,7 +696,9 @@ def test_parser_accepts_seed():
     assert args.seed is None
 
     # Custom seed should be parsed as int
-    args = parser.parse_args(["design", "--text", "hello", "--output", "out.wav", "--seed", "42"])
+    args = parser.parse_args(
+        ["design", "--text", "hello", "--output", "out.wav", "--seed", "42"]
+    )
     assert args.seed == 42
 
 

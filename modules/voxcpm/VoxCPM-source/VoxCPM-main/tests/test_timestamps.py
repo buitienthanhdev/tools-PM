@@ -1,6 +1,6 @@
-from pathlib import Path
 import sys
 import types
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 pkg = types.ModuleType("voxcpm")
@@ -12,7 +12,9 @@ from voxcpm.timestamps.stable_ts import split_word_items_to_chars
 
 
 def test_split_word_items_to_chars_evenly_distributes_word_duration():
-    chars = split_word_items_to_chars([TimestampItem(text="欢迎", start=0.5, end=0.9, level="word")])
+    chars = split_word_items_to_chars(
+        [TimestampItem(text="欢迎", start=0.5, end=0.9, level="word")]
+    )
 
     assert [item.text for item in chars] == ["欢", "迎"]
     assert chars[0].start == 0.5

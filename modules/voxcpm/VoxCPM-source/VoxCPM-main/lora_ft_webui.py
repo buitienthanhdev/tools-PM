@@ -1,14 +1,15 @@
-import os
-import sys
-import json
-import yaml
 import datetime
+import json
+import os
 import subprocess
+import sys
 import threading
-import gradio as gr
-import torch
 from pathlib import Path
 from typing import Optional
+
+import gradio as gr
+import torch
+import yaml
 
 # Add src to sys.path
 project_root = Path(__file__).parent
@@ -19,10 +20,10 @@ _v2_path = project_root / "models" / "openbmb__VoxCPM2"
 _v15_path = project_root / "models" / "openbmb__VoxCPM1.5"
 default_pretrained_path = str(_v2_path if _v2_path.exists() else _v15_path)
 
-from voxcpm.core import VoxCPM
-from voxcpm.model.voxcpm import LoRAConfig
 import numpy as np
 from funasr import AutoModel
+from voxcpm.core import VoxCPM
+from voxcpm.model.voxcpm import LoRAConfig
 
 # --- Localization ---
 LANG_DICT = {
@@ -115,7 +116,10 @@ def detect_sample_rate(pretrained_path: str) -> Optional[int]:
             cfg = json.load(f)
         return int(cfg["audio_vae_config"]["sample_rate"])
     except (KeyError, ValueError, json.JSONDecodeError) as e:
-        print(f"Warning: failed to detect sample_rate from {config_file}: {e}", file=sys.stderr)
+        print(
+            f"Warning: failed to detect sample_rate from {config_file}: {e}",
+            file=sys.stderr,
+        )
         return None
 
 
@@ -232,11 +236,17 @@ def load_model(pretrained_path, lora_path=None):
             # Try to load LoRA config from lora_config.json
             lora_config, _ = load_lora_config_from_checkpoint(full_lora_path)
             if lora_config:
-                print(f"Loaded LoRA config from {full_lora_path}/lora_config.json", file=sys.stderr)
+                print(
+                    f"Loaded LoRA config from {full_lora_path}/lora_config.json",
+                    file=sys.stderr,
+                )
             else:
                 # Fallback to default config for old checkpoints
                 lora_config = get_default_lora_config()
-                print("Using default LoRA config (lora_config.json not found)", file=sys.stderr)
+                print(
+                    "Using default LoRA config (lora_config.json not found)",
+                    file=sys.stderr,
+                )
 
     # Always init with a default LoRA config to allow hot-swapping later
     if lora_config is None:
@@ -252,11 +262,24 @@ def load_model(pretrained_path, lora_path=None):
     return "Model loaded successfully!"
 
 
-def run_inference(text, prompt_wav, prompt_text, lora_selection, cfg_scale, steps, seed, pretrained_path=None):
+def run_inference(
+    text,
+    prompt_wav,
+    prompt_text,
+    lora_selection,
+    cfg_scale,
+    steps,
+    seed,
+    pretrained_path=None,
+):
     # 如果选择了 LoRA 模型且当前模型未加载，尝试从 LoRA config 读取 base_model
     if current_model is None:
         # 优先使用用户指定的预训练模型路径
-        base_model_path = pretrained_path if pretrained_path and pretrained_path.strip() else default_pretrained_path
+        base_model_path = (
+            pretrained_path
+            if pretrained_path and pretrained_path.strip()
+            else default_pretrained_path
+        )
 
         # 如果选择了 LoRA，尝试从其 config 读取 base_model
         if lora_selection and lora_selection != "None":
@@ -273,15 +296,29 @@ def run_inference(text, prompt_wav, prompt_text, lora_selection, cfg_scale, step
                         # 优先使用保存的 base_model 路径
                         if os.path.exists(saved_base_model):
                             base_model_path = saved_base_model
-                            print(f"Using base model from LoRA config: {base_model_path}", file=sys.stderr)
+                            print(
+                                f"Using base model from LoRA config: {base_model_path}",
+                                file=sys.stderr,
+                            )
                         else:
-                            print(f"Warning: Saved base_model path not found: {saved_base_model}", file=sys.stderr)
-                            print(f"Falling back to default: {base_model_path}", file=sys.stderr)
+                            print(
+                                f"Warning: Saved base_model path not found: {saved_base_model}",
+                                file=sys.stderr,
+                            )
+                            print(
+                                f"Falling back to default: {base_model_path}",
+                                file=sys.stderr,
+                            )
                 except Exception as e:
-                    print(f"Warning: Failed to read base_model from LoRA config: {e}", file=sys.stderr)
+                    print(
+                        f"Warning: Failed to read base_model from LoRA config: {e}",
+                        file=sys.stderr,
+                    )
 
         # 加载模型
-        lora_to_load = lora_selection if lora_selection and lora_selection != "None" else None
+        lora_to_load = (
+            lora_selection if lora_selection and lora_selection != "None" else None
+        )
         try:
             print(f"Loading base model: {base_model_path}", file=sys.stderr)
             load_model(base_model_path, lora_to_load)
@@ -301,16 +338,29 @@ def run_inference(text, prompt_wav, prompt_text, lora_selection, cfg_scale, step
         full_lora_path = os.path.join("lora", lora_selection)
 
         if lora_just_loaded != lora_selection:
-            new_lora_config, new_base_model = load_lora_config_from_checkpoint(full_lora_path)
-            current_r = current_model.tts_model.lora_config.r if current_model.tts_model.lora_config else None
+            new_lora_config, new_base_model = load_lora_config_from_checkpoint(
+                full_lora_path
+            )
+            current_r = (
+                current_model.tts_model.lora_config.r
+                if current_model.tts_model.lora_config
+                else None
+            )
             new_r = new_lora_config.r if new_lora_config else None
 
             if new_r is not None and current_r is not None and new_r != current_r:
-                print(f"LoRA rank mismatch (model r={current_r}, checkpoint r={new_r}), reloading...", file=sys.stderr)
+                print(
+                    f"LoRA rank mismatch (model r={current_r}, checkpoint r={new_r}), reloading...",
+                    file=sys.stderr,
+                )
                 reload_base = (
                     new_base_model
                     if new_base_model and os.path.exists(new_base_model)
-                    else (pretrained_path if pretrained_path and pretrained_path.strip() else default_pretrained_path)
+                    else (
+                        pretrained_path
+                        if pretrained_path and pretrained_path.strip()
+                        else default_pretrained_path
+                    )
                 )
                 try:
                     load_model(reload_base, lora_selection)
@@ -432,7 +482,9 @@ def start_training(
 
     # Create config dictionary
     # Resolve max_steps default
-    resolved_max_steps = int(max_steps) if max_steps not in (None, "", 0) else int(num_iters)
+    resolved_max_steps = (
+        int(max_steps) if max_steps not in (None, "", 0) else int(num_iters)
+    )
 
     # Auto-detect out_sample_rate from model config
     out_sample_rate = 0
@@ -490,13 +542,22 @@ def start_training(
     with open(config_path, "w") as f:
         yaml.dump(config, f)
 
-    cmd = [sys.executable, "scripts/train_voxcpm_finetune.py", "--config_path", config_path]
+    cmd = [
+        sys.executable,
+        "scripts/train_voxcpm_finetune.py",
+        "--config_path",
+        config_path,
+    ]
 
-    training_log = f"Starting training...\nConfig saved to {config_path}\nOutput dir: {save_dir}\n"
+    training_log = (
+        f"Starting training...\nConfig saved to {config_path}\nOutput dir: {save_dir}\n"
+    )
 
     def run_process():
         global training_process, training_log
-        training_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        training_process = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+        )
 
         assert training_process.stdout is not None
         for line in training_process.stdout:
@@ -893,7 +954,9 @@ label {
 }
 """
 
-with gr.Blocks(title="VoxCPM LoRA WebUI", theme=gr.themes.Soft(), css=custom_css) as app:
+with gr.Blocks(
+    title="VoxCPM LoRA WebUI", theme=gr.themes.Soft(), css=custom_css
+) as app:
 
     # State for language
     lang_state = gr.State("zh")  # Default to Chinese
@@ -901,90 +964,173 @@ with gr.Blocks(title="VoxCPM LoRA WebUI", theme=gr.themes.Soft(), css=custom_css
     # 标题区域
     with gr.Row(elem_classes="title-section"):
         with gr.Column(scale=3):
-            title_md = gr.Markdown("""
+            title_md = gr.Markdown(
+                """
             # 🎵 VoxCPM LoRA WebUI
             ### 强大的语音合成和 LoRA 微调工具
 
             支持语音克隆、LoRA 模型训练和推理的完整解决方案
-            """)
+            """
+            )
         with gr.Column(scale=1):
             lang_btn = gr.Radio(
-                choices=["en", "zh"], value="zh", label="🌐 Language / 语言", elem_classes="lang-selector"
+                choices=["en", "zh"],
+                value="zh",
+                label="🌐 Language / 语言",
+                elem_classes="lang-selector",
             )
 
     with gr.Tabs(elem_classes="tabs") as tabs:
         # === Training Tab ===
         with gr.Tab("🚀 训练 (Training)") as tab_train:
-            gr.Markdown("""
+            gr.Markdown(
+                """
             ### 🎯 模型训练设置
             配置你的 LoRA 微调训练参数
-            """)
+            """
+            )
 
             with gr.Row():
                 with gr.Column(scale=2, elem_classes="form-section"):
                     gr.Markdown("#### 📁 基础配置")
 
                     train_pretrained_path = gr.Textbox(
-                        label="📂 预训练模型路径", value=default_pretrained_path, elem_classes="input-field"
+                        label="📂 预训练模型路径",
+                        value=default_pretrained_path,
+                        elem_classes="input-field",
                     )
                     train_manifest = gr.Textbox(
                         label="📋 训练数据清单 (jsonl)",
                         value="examples/train_data_example.jsonl",
                         elem_classes="input-field",
                     )
-                    val_manifest = gr.Textbox(label="📊 验证数据清单 (可选)", value="", elem_classes="input-field")
+                    val_manifest = gr.Textbox(
+                        label="📊 验证数据清单 (可选)",
+                        value="",
+                        elem_classes="input-field",
+                    )
 
                     gr.Markdown("#### ⚙️ 训练参数")
 
                     with gr.Row():
-                        lr = gr.Number(label="📈 学习率 (Learning Rate)", value=1e-4, elem_classes="input-field")
+                        lr = gr.Number(
+                            label="📈 学习率 (Learning Rate)",
+                            value=1e-4,
+                            elem_classes="input-field",
+                        )
                         num_iters = gr.Number(
-                            label="🔄 最大迭代次数", value=2000, precision=0, elem_classes="input-field"
+                            label="🔄 最大迭代次数",
+                            value=2000,
+                            precision=0,
+                            elem_classes="input-field",
                         )
                         batch_size = gr.Number(
-                            label="📦 批次大小 (Batch Size)", value=1, precision=0, elem_classes="input-field"
+                            label="📦 批次大小 (Batch Size)",
+                            value=1,
+                            precision=0,
+                            elem_classes="input-field",
                         )
 
                     with gr.Row():
-                        lora_rank = gr.Number(label="🎯 LoRA Rank", value=32, precision=0, elem_classes="input-field")
-                        lora_alpha = gr.Number(label="⚖️ LoRA Alpha", value=16, precision=0, elem_classes="input-field")
+                        lora_rank = gr.Number(
+                            label="🎯 LoRA Rank",
+                            value=32,
+                            precision=0,
+                            elem_classes="input-field",
+                        )
+                        lora_alpha = gr.Number(
+                            label="⚖️ LoRA Alpha",
+                            value=16,
+                            precision=0,
+                            elem_classes="input-field",
+                        )
                         save_interval = gr.Number(
-                            label="💾 保存间隔 (Steps)", value=1000, precision=0, elem_classes="input-field"
+                            label="💾 保存间隔 (Steps)",
+                            value=1000,
+                            precision=0,
+                            elem_classes="input-field",
                         )
 
                     output_name = gr.Textbox(
-                        label="📁 输出目录名称 (可选，若存在则继续训练)", value="", elem_classes="input-field"
+                        label="📁 输出目录名称 (可选，若存在则继续训练)",
+                        value="",
+                        elem_classes="input-field",
                     )
 
                     with gr.Row():
-                        start_btn = gr.Button("▶️ 开始训练", variant="primary", elem_classes="button-primary")
-                        stop_btn = gr.Button("⏹️ 停止训练", variant="stop", elem_classes="button-stop")
+                        start_btn = gr.Button(
+                            "▶️ 开始训练",
+                            variant="primary",
+                            elem_classes="button-primary",
+                        )
+                        stop_btn = gr.Button(
+                            "⏹️ 停止训练", variant="stop", elem_classes="button-stop"
+                        )
 
-                    with gr.Accordion("🔧 高级选项 (Advanced)", open=False, elem_classes="accordion"):
+                    with gr.Accordion(
+                        "🔧 高级选项 (Advanced)", open=False, elem_classes="accordion"
+                    ):
                         with gr.Row():
-                            grad_accum_steps = gr.Number(label="梯度累积 (grad_accum_steps)", value=1, precision=0)
-                            num_workers = gr.Number(label="数据加载线程 (num_workers)", value=2, precision=0)
-                            log_interval = gr.Number(label="日志间隔 (log_interval)", value=10, precision=0)
+                            grad_accum_steps = gr.Number(
+                                label="梯度累积 (grad_accum_steps)",
+                                value=1,
+                                precision=0,
+                            )
+                            num_workers = gr.Number(
+                                label="数据加载线程 (num_workers)", value=2, precision=0
+                            )
+                            log_interval = gr.Number(
+                                label="日志间隔 (log_interval)", value=10, precision=0
+                            )
                         with gr.Row():
-                            valid_interval = gr.Number(label="验证间隔 (valid_interval)", value=1000, precision=0)
-                            weight_decay = gr.Number(label="权重衰减 (weight_decay)", value=0.01)
-                            warmup_steps = gr.Number(label="warmup_steps", value=100, precision=0)
+                            valid_interval = gr.Number(
+                                label="验证间隔 (valid_interval)",
+                                value=1000,
+                                precision=0,
+                            )
+                            weight_decay = gr.Number(
+                                label="权重衰减 (weight_decay)", value=0.01
+                            )
+                            warmup_steps = gr.Number(
+                                label="warmup_steps", value=100, precision=0
+                            )
                         with gr.Row():
-                            max_steps = gr.Number(label="最大步数 (max_steps, 0→默认num_iters)", value=0, precision=0)
-                            sample_rate = gr.Number(label="采样率 (sample_rate)", value=44100, precision=0)
-                            max_grad_norm = gr.Number(label="梯度裁剪 (max_grad_norm, 0=关闭)", value=1.0)
+                            max_steps = gr.Number(
+                                label="最大步数 (max_steps, 0→默认num_iters)",
+                                value=0,
+                                precision=0,
+                            )
+                            sample_rate = gr.Number(
+                                label="采样率 (sample_rate)", value=44100, precision=0
+                            )
+                            max_grad_norm = gr.Number(
+                                label="梯度裁剪 (max_grad_norm, 0=关闭)", value=1.0
+                            )
                         with gr.Row():
-                            tensorboard_path = gr.Textbox(label="Tensorboard 路径 (可选)", value="")
-                            enable_lm = gr.Checkbox(label="启用 LoRA LM (enable_lm)", value=True)
-                            enable_dit = gr.Checkbox(label="启用 LoRA DIT (enable_dit)", value=True)
+                            tensorboard_path = gr.Textbox(
+                                label="Tensorboard 路径 (可选)", value=""
+                            )
+                            enable_lm = gr.Checkbox(
+                                label="启用 LoRA LM (enable_lm)", value=True
+                            )
+                            enable_dit = gr.Checkbox(
+                                label="启用 LoRA DIT (enable_dit)", value=True
+                            )
                         with gr.Row():
-                            enable_proj = gr.Checkbox(label="启用投影 (enable_proj)", value=False)
+                            enable_proj = gr.Checkbox(
+                                label="启用投影 (enable_proj)", value=False
+                            )
                             dropout = gr.Number(label="LoRA Dropout", value=0.0)
 
                         gr.Markdown("#### 分发选项 (Distribution)")
                         with gr.Row():
-                            hf_model_id = gr.Textbox(label="HuggingFace Model ID (e.g., openbmb/VoxCPM2)", value="")
-                            distribute = gr.Checkbox(label="分发模式 (distribute)", value=False)
+                            hf_model_id = gr.Textbox(
+                                label="HuggingFace Model ID (e.g., openbmb/VoxCPM2)",
+                                value="",
+                            )
+                            distribute = gr.Checkbox(
+                                label="分发模式 (distribute)", value=False
+                            )
 
                 with gr.Column(scale=2, elem_classes="form-section"):
                     gr.Markdown("#### 📊 训练日志")
@@ -1052,10 +1198,12 @@ with gr.Blocks(title="VoxCPM LoRA WebUI", theme=gr.themes.Soft(), css=custom_css
 
         # === Inference Tab ===
         with gr.Tab("🎵 推理 (Inference)") as tab_infer:
-            gr.Markdown("""
+            gr.Markdown(
+                """
             ### 🎤 语音合成
             使用训练好的 LoRA 模型生成语音，支持 LoRA 微调和声音克隆
-            """)
+            """
+            )
 
             with gr.Row():
                 # 左栏：输入配置 (35%)
@@ -1072,7 +1220,9 @@ with gr.Blocks(title="VoxCPM LoRA WebUI", theme=gr.themes.Soft(), css=custom_css
 
                     gr.Markdown("**🎭 声音克隆（可选）**")
 
-                    prompt_wav = gr.Audio(label="🎵 参考音频", type="filepath", elem_classes="input-field")
+                    prompt_wav = gr.Audio(
+                        label="🎵 参考音频", type="filepath", elem_classes="input-field"
+                    )
 
                     prompt_text = gr.Textbox(
                         label="📝 参考文本（可选）",
@@ -1093,7 +1243,9 @@ with gr.Blocks(title="VoxCPM LoRA WebUI", theme=gr.themes.Soft(), css=custom_css
                         info="选择训练好的 LoRA 模型，或选择 None 使用基础模型",
                     )
 
-                    refresh_lora_btn = gr.Button("🔄 刷新模型列表", elem_classes="button-refresh", size="sm")
+                    refresh_lora_btn = gr.Button(
+                        "🔄 刷新模型列表", elem_classes="button-refresh", size="sm"
+                    )
 
                     gr.Markdown("#### ⚙️ 生成参数")
 
@@ -1123,13 +1275,20 @@ with gr.Blocks(title="VoxCPM LoRA WebUI", theme=gr.themes.Soft(), css=custom_css
                         info="-1 为随机，固定值可复现结果",
                     )
 
-                    generate_btn = gr.Button("🎵 生成音频", variant="primary", elem_classes="button-primary", size="lg")
+                    generate_btn = gr.Button(
+                        "🎵 生成音频",
+                        variant="primary",
+                        elem_classes="button-primary",
+                        size="lg",
+                    )
 
                 # 右栏：生成结果 (30%)
                 with gr.Column(scale=30, elem_classes="form-section"):
                     gr.Markdown("#### 🎧 生成结果")
 
-                    audio_out = gr.Audio(label="", elem_classes="input-field", show_label=False)
+                    audio_out = gr.Audio(
+                        label="", elem_classes="input-field", show_label=False
+                    )
 
                     gr.Markdown("#### 📋 状态信息")
 
@@ -1148,10 +1307,16 @@ with gr.Blocks(title="VoxCPM LoRA WebUI", theme=gr.themes.Soft(), css=custom_css
                 choices = ["None"] + [ckpt[0] for ckpt in checkpoints_with_info]
 
                 # 输出调试信息
-                print(f"刷新 LoRA 列表: 找到 {len(checkpoints_with_info)} 个检查点", file=sys.stderr)
+                print(
+                    f"刷新 LoRA 列表: 找到 {len(checkpoints_with_info)} 个检查点",
+                    file=sys.stderr,
+                )
                 for ckpt_path, base_model in checkpoints_with_info:
                     if base_model:
-                        print(f"  - {ckpt_path} (Base Model: {base_model})", file=sys.stderr)
+                        print(
+                            f"  - {ckpt_path} (Base Model: {base_model})",
+                            file=sys.stderr,
+                        )
                     else:
                         print(f"  - {ckpt_path}", file=sys.stderr)
 
@@ -1160,7 +1325,9 @@ with gr.Blocks(title="VoxCPM LoRA WebUI", theme=gr.themes.Soft(), css=custom_css
             refresh_lora_btn.click(refresh_loras, outputs=[lora_select])
 
             # Auto-recognize audio when uploaded
-            prompt_wav.change(fn=recognize_audio, inputs=[prompt_wav], outputs=[prompt_text])
+            prompt_wav.change(
+                fn=recognize_audio, inputs=[prompt_wav], outputs=[prompt_text]
+            )
 
             generate_btn.click(
                 run_inference,

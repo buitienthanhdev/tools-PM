@@ -9,9 +9,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
 from waitress import serve
+
 from app import app
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("============================================================")
     print("  PM Tools Hub - Production WSGI Server")
     print("  URL: http://localhost:5000")
@@ -19,8 +20,8 @@ if __name__ == '__main__':
     print("============================================================")
     serve(
         app,
-        listen='0.0.0.0:5000 [::]:5000',
+        listen="0.0.0.0:5000 [::]:5000",
         threads=8,
         channel_timeout=300,
-        connection_limit=100
+        connection_limit=100,
     )

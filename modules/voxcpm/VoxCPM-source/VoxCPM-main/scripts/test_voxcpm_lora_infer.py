@@ -29,7 +29,6 @@ import sys
 from pathlib import Path
 
 import soundfile as sf
-
 from voxcpm.core import VoxCPM
 from voxcpm.model.voxcpm import LoRAConfig
 
@@ -124,9 +123,13 @@ def main():
         lora_info = json.load(f)
 
     # Get base model path (command line arg overrides config)
-    pretrained_path = args.base_model if args.base_model else lora_info.get("base_model")
+    pretrained_path = (
+        args.base_model if args.base_model else lora_info.get("base_model")
+    )
     if not pretrained_path:
-        raise ValueError("base_model not found in lora_config.json and --base_model not provided")
+        raise ValueError(
+            "base_model not found in lora_config.json and --base_model not provided"
+        )
 
     # Get LoRA config
     lora_cfg_dict = lora_info.get("lora_config", {})
@@ -135,7 +138,12 @@ def main():
     print(f"Loaded config from: {lora_config_path}", file=sys.stderr)
     print(f"  Base model: {pretrained_path}", file=sys.stderr)
     print(
-        f"  LoRA config: r={lora_cfg.r}, alpha={lora_cfg.alpha}" if lora_cfg else "  LoRA config: None", file=sys.stderr
+        (
+            f"  LoRA config: r={lora_cfg.r}, alpha={lora_cfg.alpha}"
+            if lora_cfg
+            else "  LoRA config: None"
+        ),
+        file=sys.stderr,
     )
     if args.seed is not None:
         print(f"  Seed: {args.seed}", file=sys.stderr)

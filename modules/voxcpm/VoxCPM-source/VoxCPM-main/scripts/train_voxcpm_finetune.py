@@ -7,6 +7,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 import contextlib
+import os
+import signal
 from typing import Dict
 
 import argbind
@@ -14,8 +16,6 @@ import torch
 from tensorboardX import SummaryWriter
 from torch.optim import AdamW
 from transformers import get_cosine_schedule_with_warmup
-import signal
-import os
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -25,11 +25,13 @@ try:
     SAFETENSORS_AVAILABLE = True
 except ImportError:
     SAFETENSORS_AVAILABLE = False
-    print("Warning: safetensors not available, will use pytorch format", file=sys.stderr)
+    print(
+        "Warning: safetensors not available, will use pytorch format", file=sys.stderr
+    )
 
 import json
 
-from voxcpm.model import VoxCPMModel, VoxCPM2Model
+from voxcpm.model import VoxCPM2Model, VoxCPMModel
 from voxcpm.model.voxcpm import LoRAConfig as LoRAConfigV1
 from voxcpm.model.voxcpm2 import LoRAConfig as LoRAConfigV2
 from voxcpm.training import (
@@ -88,17 +90,26 @@ def train(
     accelerator.barrier()  # Wait for directory creation
 
     writer = SummaryWriter(log_dir=str(tb_dir)) if accelerator.rank == 0 else None
-    tracker = TrainingTracker(writer=writer, log_file=str(save_dir / "train.log"), rank=accelerator.rank)
+    tracker = TrainingTracker(
+        writer=writer, log_file=str(save_dir / "train.log"), rank=accelerator.rank
+    )
 
     # Auto-detect model architecture from config.json
-    with open(os.path.join(pretrained_path, "config.json"), "r", encoding="utf-8") as _f:
+    with open(
+        os.path.join(pretrained_path, "config.json"), "r", encoding="utf-8"
+    ) as _f:
         _arch = json.load(_f).get("architecture", "voxcpm").lower()
     _model_cls = VoxCPM2Model if _arch == "voxcpm2" else VoxCPMModel
     LoRAConfig = LoRAConfigV2 if _arch == "voxcpm2" else LoRAConfigV1
     if accelerator.rank == 0:
-        print(f"Detected architecture: {_arch} -> {_model_cls.__name__}", file=sys.stderr)
+        print(
+            f"Detected architecture: {_arch} -> {_model_cls.__name__}", file=sys.stderr
+        )
     base_model = _model_cls.from_local(
-        pretrained_path, optimize=False, training=True, lora_config=LoRAConfig(**lora) if lora else None
+        pretrained_path,
+        optimize=False,
+        training=True,
+        lora_config=LoRAConfig(**lora) if lora else None,
     )
     tokenizer = base_model.text_tokenizer
 
@@ -126,7 +137,11 @@ def train(
         val_texts = list(val_ds["text"])  # Save original texts
         val_ds = val_ds.map(tokenize, batched=True, remove_columns=["text"])
 
-    dataset_cnt = int(max(train_ds["dataset_id"])) + 1 if "dataset_id" in train_ds.column_names else 1
+    dataset_cnt = (
+        int(max(train_ds["dataset_id"])) + 1
+        if "dataset_id" in train_ds.column_names
+        else 1
+    )
     num_train_samples = len(train_ds)
 
     # ------------------------------------------------------------------ #
@@ -138,13 +153,17 @@ def train(
     if max_batch_tokens and max_batch_tokens > 0:
         from voxcpm.training.data import compute_sample_lengths
 
-        audio_vae_fps = base_model.audio_vae.sample_rate / base_model.audio_vae.hop_length
+        audio_vae_fps = (
+            base_model.audio_vae.sample_rate / base_model.audio_vae.hop_length
+        )
         est_lengths = compute_sample_lengths(
             train_ds,
             audio_vae_fps=audio_vae_fps,
             patch_size=base_model.config.patch_size,
         )
-        max_sample_len = max_batch_tokens // batch_size if batch_size > 0 else max(est_lengths)
+        max_sample_len = (
+            max_batch_tokens // batch_size if batch_size > 0 else max(est_lengths)
+        )
         keep_indices = [i for i, L in enumerate(est_lengths) if L <= max_sample_len]
 
         if len(keep_indices) < len(train_ds) and accelerator.rank == 0:
@@ -213,7 +232,9 @@ def train(
     )
 
     # All ranks load the same checkpoint to keep model and optimizer state in sync.
-    start_step = load_checkpoint(model, optimizer, scheduler, save_dir, rank=accelerator.rank)
+    start_step = load_checkpoint(
+        model, optimizer, scheduler, save_dir, rank=accelerator.rank
+    )
     accelerator.barrier()
 
     if start_step > 0 and accelerator.rank == 0:
@@ -241,9 +262,21 @@ def train(
         except Exception:
             cur_step = start_step
         if _rank == 0:
-            print(f"Signal {signum} received. Saving checkpoint at step {cur_step} ...", file=sys.stderr)
+            print(
+                f"Signal {signum} received. Saving checkpoint at step {cur_step} ...",
+                file=sys.stderr,
+            )
             try:
-                save_checkpoint(_model, _optim, _sched, _save_dir, cur_step, _pretrained, _hf_id, _dist)
+                save_checkpoint(
+                    _model,
+                    _optim,
+                    _sched,
+                    _save_dir,
+                    cur_step,
+                    _pretrained,
+                    _hf_id,
+                    _dist,
+                )
                 print("Checkpoint saved. Exiting.", file=sys.stderr)
             except Exception as e:
                 print(f"Error saving checkpoint on signal: {e}", file=sys.stderr)
@@ -287,7 +320,11 @@ def train(
                 # Only sync gradients on the last micro-batch
                 # Use no_sync() for intermediate steps to reduce communication overhead
                 is_last_micro_step = micro_step == grad_accum_steps - 1
-                sync_context = contextlib.nullcontext() if is_last_micro_step else accelerator.no_sync()
+                sync_context = (
+                    contextlib.nullcontext()
+                    if is_last_micro_step
+                    else accelerator.no_sync()
+                )
 
                 with sync_context:
                     with accelerator.autocast(dtype=torch.bfloat16):
@@ -319,22 +356,31 @@ def train(
             if scaler is not None:
                 scaler.unscale_(optimizer)
             effective_max_norm = max_grad_norm if max_grad_norm > 0 else 1e9
-            grad_norm = torch.nn.utils.clip_grad_norm_(unwrapped_model.parameters(), max_norm=effective_max_norm)
+            grad_norm = torch.nn.utils.clip_grad_norm_(
+                unwrapped_model.parameters(), max_norm=effective_max_norm
+            )
 
             accelerator.step(optimizer)
             accelerator.update()
             scheduler.step()
 
             if step % log_interval == 0 or step == num_iters - 1:
-                loss_values = {k: v.item() if isinstance(v, torch.Tensor) else float(v) for k, v in loss_dict.items()}
+                loss_values = {
+                    k: v.item() if isinstance(v, torch.Tensor) else float(v)
+                    for k, v in loss_dict.items()
+                }
                 loss_values["lr"] = float(optimizer.param_groups[0]["lr"])
                 # Account for all GPUs when converting steps to epochs.
-                epoch = (step * grad_accum_steps * batch_size * accelerator.world_size) / max(1, num_train_samples)
+                epoch = (
+                    step * grad_accum_steps * batch_size * accelerator.world_size
+                ) / max(1, num_train_samples)
                 loss_values["epoch"] = float(epoch)
                 loss_values["grad_norm"] = float(grad_norm)
                 tracker.log_metrics(loss_values, split="train")
 
-            if val_loader is not None and (step % valid_interval == 0 or step == num_iters - 1):
+            if val_loader is not None and (
+                step % valid_interval == 0 or step == num_iters - 1
+            ):
                 validate(
                     model,
                     val_loader,
@@ -353,11 +399,31 @@ def train(
                     valid_interval=valid_interval,
                 )
 
-            if (step % save_interval == 0 or step == num_iters - 1) and accelerator.rank == 0:
-                save_checkpoint(model, optimizer, scheduler, save_dir, step, pretrained_path, hf_model_id, distribute)
+            if (
+                step % save_interval == 0 or step == num_iters - 1
+            ) and accelerator.rank == 0:
+                save_checkpoint(
+                    model,
+                    optimizer,
+                    scheduler,
+                    save_dir,
+                    step,
+                    pretrained_path,
+                    hf_model_id,
+                    distribute,
+                )
 
     if accelerator.rank == 0:
-        save_checkpoint(model, optimizer, scheduler, save_dir, num_iters, pretrained_path, hf_model_id, distribute)
+        save_checkpoint(
+            model,
+            optimizer,
+            scheduler,
+            save_dir,
+            num_iters,
+            pretrained_path,
+            hf_model_id,
+            distribute,
+        )
     if writer:
         writer.close()
 
@@ -380,8 +446,9 @@ def validate(
     valid_interval=1000,
 ):
     """Validate and generate sample audio"""
-    import numpy as np  # noqa: F401
     from collections import defaultdict
+
+    import numpy as np  # noqa: F401
 
     model.eval()
     total_losses = []
@@ -430,7 +497,12 @@ def validate(
         tracker.log_metrics(val_metrics, split="val")
 
     # Generate sample audio for TensorBoard display
-    if writer is not None and val_ds is not None and audio_vae is not None and accelerator.rank == 0:
+    if (
+        writer is not None
+        and val_ds is not None
+        and audio_vae is not None
+        and accelerator.rank == 0
+    ):
         try:
             generate_sample_audio(
                 model,
@@ -448,8 +520,8 @@ def validate(
             )
         except Exception as e:
             tracker.print(f"[Warning] Failed to generate sample audio: {e}")
-            import traceback
             import io
+            import traceback
 
             buf = io.StringIO()
             traceback.print_exc(file=buf)
@@ -464,30 +536,36 @@ def validate(
         if audio_vae is None:
             missing.append("audio_vae")
         if missing and accelerator.rank == 0:
-            tracker.print(f"[Warning] Skip audio generation: missing {', '.join(missing)}")
+            tracker.print(
+                f"[Warning] Skip audio generation: missing {', '.join(missing)}"
+            )
 
     model.train()
 
 
 def compute_mel_spectrogram(audio_np, sample_rate, n_mels=128):
     """Compute Mel Spectrogram (dB) using librosa"""
-    import numpy as np
     import librosa
+    import numpy as np
 
     audio_np = audio_np.flatten().astype(np.float32)
-    mel = librosa.feature.melspectrogram(y=audio_np, sr=sample_rate, n_mels=n_mels, fmax=sample_rate // 2)
+    mel = librosa.feature.melspectrogram(
+        y=audio_np, sr=sample_rate, n_mels=n_mels, fmax=sample_rate // 2
+    )
     return librosa.power_to_db(mel, ref=np.max)
 
 
-def create_mel_figure(gen_audio_np, gen_mel, sample_rate, step=None, ref_audio_np=None, ref_mel=None):
+def create_mel_figure(
+    gen_audio_np, gen_mel, sample_rate, step=None, ref_audio_np=None, ref_mel=None
+):
     """
     Create mel spectrogram figure: show comparison if reference audio exists, otherwise show generated only
     """
     import matplotlib
 
     matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
     import librosa.display
+    import matplotlib.pyplot as plt
 
     fmax = sample_rate // 2
     step_str = f" @ Step {step}" if step is not None else ""
@@ -497,7 +575,13 @@ def create_mel_figure(gen_audio_np, gen_mel, sample_rate, step=None, ref_audio_n
         fig, (ax_ref, ax_gen) = plt.subplots(2, 1, figsize=(12, 8))
 
         img_ref = librosa.display.specshow(
-            ref_mel, sr=sample_rate, x_axis="time", y_axis="mel", fmax=fmax, cmap="viridis", ax=ax_ref
+            ref_mel,
+            sr=sample_rate,
+            x_axis="time",
+            y_axis="mel",
+            fmax=fmax,
+            cmap="viridis",
+            ax=ax_ref,
         )
         ax_ref.set_title(
             f"Reference (GT) - {len(ref_audio_np)/sample_rate:.2f}s{step_str}",
@@ -508,19 +592,38 @@ def create_mel_figure(gen_audio_np, gen_mel, sample_rate, step=None, ref_audio_n
         plt.colorbar(img_ref, ax=ax_ref, format="%+2.0f dB", pad=0.02)
 
         img_gen = librosa.display.specshow(
-            gen_mel, sr=sample_rate, x_axis="time", y_axis="mel", fmax=fmax, cmap="viridis", ax=ax_gen
+            gen_mel,
+            sr=sample_rate,
+            x_axis="time",
+            y_axis="mel",
+            fmax=fmax,
+            cmap="viridis",
+            ax=ax_gen,
         )
         ax_gen.set_title(
-            f"Generated - {len(gen_audio_np)/sample_rate:.2f}s", fontsize=10, fontweight="bold", color="#DC3545"
+            f"Generated - {len(gen_audio_np)/sample_rate:.2f}s",
+            fontsize=10,
+            fontweight="bold",
+            color="#DC3545",
         )
         plt.colorbar(img_gen, ax=ax_gen, format="%+2.0f dB", pad=0.02)
     else:
         # Single figure mode: show generated only
         fig, ax = plt.subplots(figsize=(12, 4))
         img = librosa.display.specshow(
-            gen_mel, sr=sample_rate, x_axis="time", y_axis="mel", fmax=fmax, cmap="viridis", ax=ax
+            gen_mel,
+            sr=sample_rate,
+            x_axis="time",
+            y_axis="mel",
+            fmax=fmax,
+            cmap="viridis",
+            ax=ax,
         )
-        ax.set_title(f"Generated - {len(gen_audio_np)/sample_rate:.2f}s{step_str}", fontsize=11, fontweight="bold")
+        ax.set_title(
+            f"Generated - {len(gen_audio_np)/sample_rate:.2f}s{step_str}",
+            fontsize=11,
+            fontweight="bold",
+        )
         plt.colorbar(img, ax=ax, format="%+2.0f dB", pad=0.02)
 
     plt.tight_layout()
@@ -565,21 +668,37 @@ def generate_sample_audio(
 
     for i in range(num_samples):
         sample = val_ds[i]
-        text = val_texts[i] if val_texts and i < len(val_texts) else "Hello, this is a test."
+        text = (
+            val_texts[i]
+            if val_texts and i < len(val_texts)
+            else "Hello, this is a test."
+        )
 
         # Load reference audio
         ref_audio_np = None
         try:
-            if "audio" in sample and isinstance(sample["audio"], dict) and "array" in sample["audio"]:
+            if (
+                "audio" in sample
+                and isinstance(sample["audio"], dict)
+                and "array" in sample["audio"]
+            ):
                 ref_audio_np = np.array(sample["audio"]["array"], dtype=np.float32)
                 ref_sr = sample["audio"].get("sampling_rate", sample_rate)
                 if ref_sr != sample_rate:
                     import torchaudio.functional as F
 
                     ref_audio_np = (
-                        F.resample(torch.from_numpy(ref_audio_np).unsqueeze(0), ref_sr, sample_rate).squeeze(0).numpy()
+                        F.resample(
+                            torch.from_numpy(ref_audio_np).unsqueeze(0),
+                            ref_sr,
+                            sample_rate,
+                        )
+                        .squeeze(0)
+                        .numpy()
                     )
-                log(f"[Audio] Loaded reference audio for sample {i}: duration={len(ref_audio_np)/sample_rate:.2f}s")
+                log(
+                    f"[Audio] Loaded reference audio for sample {i}: duration={len(ref_audio_np)/sample_rate:.2f}s"
+                )
         except Exception as e:
             log(f"[Warning] Failed to load reference audio: {e}")
 
@@ -620,20 +739,36 @@ def generate_sample_audio(
             gen_audio_np = normalize_audio(gen_audio_np)
 
             tag = f"val_sample_{i}"
-            writer.add_audio(f"{tag}/generated_audio", gen_audio_np, global_step=step, sample_rate=gen_sr)
-            log(f"[Audio] Generated audio for sample {i}: duration={len(gen_audio_np)/gen_sr:.2f}s")
+            writer.add_audio(
+                f"{tag}/generated_audio",
+                gen_audio_np,
+                global_step=step,
+                sample_rate=gen_sr,
+            )
+            log(
+                f"[Audio] Generated audio for sample {i}: duration={len(gen_audio_np)/gen_sr:.2f}s"
+            )
 
             # Log reference audio (at encoder input rate, which is what val_ds provides)
             if ref_audio_np is not None:
                 writer.add_audio(
-                    f"{tag}/reference_audio", normalize_audio(ref_audio_np), global_step=step, sample_rate=sample_rate
+                    f"{tag}/reference_audio",
+                    normalize_audio(ref_audio_np),
+                    global_step=step,
+                    sample_rate=sample_rate,
                 )
 
             # Generate mel spectrogram figure
             try:
                 mel_gen = compute_mel_spectrogram(gen_audio_np, gen_sr)
-                mel_ref = compute_mel_spectrogram(ref_audio_np, sample_rate) if ref_audio_np is not None else None
-                fig = create_mel_figure(gen_audio_np, mel_gen, gen_sr, step, ref_audio_np, mel_ref)
+                mel_ref = (
+                    compute_mel_spectrogram(ref_audio_np, sample_rate)
+                    if ref_audio_np is not None
+                    else None
+                )
+                fig = create_mel_figure(
+                    gen_audio_np, mel_gen, gen_sr, step, ref_audio_np, mel_ref
+                )
                 writer.add_figure(f"{tag}/mel_spectrogram", fig, global_step=step)
                 log(f"[Audio] Created mel spectrogram figure for sample {i}")
             except Exception as e:
@@ -684,7 +819,9 @@ def load_checkpoint(model, optimizer, scheduler, save_dir: Path, rank: int = 0):
 
                 state_dict = load_file(str(lora_weights_path))
             else:
-                ckpt = torch.load(lora_weights_path, map_location="cpu", weights_only=True)
+                ckpt = torch.load(
+                    lora_weights_path, map_location="cpu", weights_only=True
+                )
                 state_dict = ckpt.get("state_dict", ckpt)
 
             unwrapped.load_state_dict(state_dict, strict=False)
@@ -712,14 +849,18 @@ def load_checkpoint(model, optimizer, scheduler, save_dir: Path, rank: int = 0):
     # Load optimizer state
     optimizer_path = latest_folder / "optimizer.pth"
     if optimizer_path.exists():
-        optimizer.load_state_dict(torch.load(optimizer_path, map_location="cpu", weights_only=True))
+        optimizer.load_state_dict(
+            torch.load(optimizer_path, map_location="cpu", weights_only=True)
+        )
         if rank == 0:
             print(f"Loaded optimizer state from {optimizer_path}", file=sys.stderr)
 
     # Load scheduler state
     scheduler_path = latest_folder / "scheduler.pth"
     if scheduler_path.exists():
-        scheduler.load_state_dict(torch.load(scheduler_path, map_location="cpu", weights_only=True))
+        scheduler.load_state_dict(
+            torch.load(scheduler_path, map_location="cpu", weights_only=True)
+        )
         if rank == 0:
             print(f"Loaded scheduler state from {scheduler_path}", file=sys.stderr)
 
@@ -733,7 +874,9 @@ def load_checkpoint(model, optimizer, scheduler, save_dir: Path, rank: int = 0):
         return resume_step
 
     # Fallback for older checkpoints without metadata.
-    step_folders = [d for d in save_dir.iterdir() if d.is_dir() and d.name.startswith("step_")]
+    step_folders = [
+        d for d in save_dir.iterdir() if d.is_dir() and d.name.startswith("step_")
+    ]
     if step_folders:
         steps = [int(d.name.split("_")[1]) for d in step_folders]
         resume_step = max(steps)
@@ -780,16 +923,26 @@ def save_checkpoint(
 
         # Save LoRA config and base model path to a separate JSON file
         # If distribute=True, save hf_model_id; otherwise save local pretrained_path
-        base_model_to_save = hf_model_id if distribute else (str(pretrained_path) if pretrained_path else None)
+        base_model_to_save = (
+            hf_model_id
+            if distribute
+            else (str(pretrained_path) if pretrained_path else None)
+        )
         lora_info = {
             "base_model": base_model_to_save,
-            "lora_config": lora_cfg.model_dump() if hasattr(lora_cfg, "model_dump") else vars(lora_cfg),
+            "lora_config": (
+                lora_cfg.model_dump()
+                if hasattr(lora_cfg, "model_dump")
+                else vars(lora_cfg)
+            ),
         }
         with open(folder / "lora_config.json", "w", encoding="utf-8") as f:
             json.dump(lora_info, f, indent=2, ensure_ascii=False)
     else:
         # Full finetune: save non-vae weights to model.safetensors
-        state_dict = {k: v for k, v in full_state.items() if not k.startswith("audio_vae.")}
+        state_dict = {
+            k: v for k, v in full_state.items() if not k.startswith("audio_vae.")
+        }
         if SAFETENSORS_AVAILABLE:
             save_file(state_dict, folder / "model.safetensors")
         else:
@@ -823,7 +976,10 @@ def save_checkpoint(
             shutil.rmtree(latest_link)
         shutil.copytree(folder, latest_link)
     except Exception:
-        print(f"Warning: failed to update latest checkpoint at {latest_link}", file=sys.stderr)
+        print(
+            f"Warning: failed to update latest checkpoint at {latest_link}",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

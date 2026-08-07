@@ -20,12 +20,12 @@ limitations under the License.
 
 import os
 import sys
-from typing import Tuple, Union, Generator, List, Optional
+import warnings
+from typing import Generator, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torchaudio
-import warnings
 from einops import rearrange
 from pydantic import BaseModel
 
@@ -47,8 +47,8 @@ from ..modules.minicpm4 import MiniCPM4Config, MiniCPMModel
 from .utils import (
     apply_generation_seed,
     get_dtype,
-    materialize_generation_seed,
     mask_multichar_chinese_tokens,
+    materialize_generation_seed,
     next_and_close,
     pick_runtime_dtype,
     resolve_runtime_device,
@@ -104,7 +104,11 @@ class LoRAConfig(BaseModel):
     target_modules_lm: list[str] = ["q_proj", "v_proj", "k_proj", "o_proj"]
     target_modules_dit: list[str] = ["q_proj", "v_proj", "k_proj", "o_proj"]
     # Projection layer attribute names to find on VoxCPMModel
-    target_proj_modules: list[str] = ["enc_to_lm_proj", "lm_to_dit_proj", "res_to_dit_proj"]
+    target_proj_modules: list[str] = [
+        "enc_to_lm_proj",
+        "lm_to_dit_proj",
+        "res_to_dit_proj",
+    ]
 
 
 VoxCPMConfig.model_rebuild()
@@ -133,11 +137,16 @@ class VoxCPMModel(nn.Module):
                 file=sys.stderr,
             )
             self.config.dtype = resolved_dtype
-        print(f"Running on device: {self.device}, dtype: {self.config.dtype}", file=sys.stderr)
+        print(
+            f"Running on device: {self.device}, dtype: {self.config.dtype}",
+            file=sys.stderr,
+        )
 
         # Text-Semantic LM
         self.base_lm = MiniCPMModel(config.lm_config)
-        self.base_lm.setup_cache(1, config.max_length, self.device, get_dtype(self.config.dtype))
+        self.base_lm.setup_cache(
+            1, config.max_length, self.device, get_dtype(self.config.dtype)
+        )
 
         self.text_tokenizer = mask_multichar_chinese_tokens(tokenizer)
         self.audio_start_token = 101
@@ -149,7 +158,9 @@ class VoxCPMModel(nn.Module):
         residual_lm_config.num_hidden_layers = config.residual_lm_num_layers
         residual_lm_config.vocab_size = 0
         self.residual_lm = MiniCPMModel(residual_lm_config)
-        self.residual_lm.setup_cache(1, config.max_length, self.device, get_dtype(self.config.dtype))
+        self.residual_lm.setup_cache(
+            1, config.max_length, self.device, get_dtype(self.config.dtype)
+        )
 
         # Local Encoder
         encoder_config = config.lm_config.model_copy(deep=True)
@@ -183,12 +194,20 @@ class VoxCPMModel(nn.Module):
             config.scalar_quantization_latent_dim,
             config.scalar_quantization_scale,
         )
-        self.enc_to_lm_proj = nn.Linear(config.encoder_config.hidden_dim, config.lm_config.hidden_size)
-        self.lm_to_dit_proj = nn.Linear(config.lm_config.hidden_size, config.dit_config.hidden_dim)
-        self.res_to_dit_proj = nn.Linear(config.lm_config.hidden_size, config.dit_config.hidden_dim)
+        self.enc_to_lm_proj = nn.Linear(
+            config.encoder_config.hidden_dim, config.lm_config.hidden_size
+        )
+        self.lm_to_dit_proj = nn.Linear(
+            config.lm_config.hidden_size, config.dit_config.hidden_dim
+        )
+        self.res_to_dit_proj = nn.Linear(
+            config.lm_config.hidden_size, config.dit_config.hidden_dim
+        )
 
         # Stop Predictor
-        self.stop_proj = nn.Linear(config.lm_config.hidden_size, config.lm_config.hidden_size)
+        self.stop_proj = nn.Linear(
+            config.lm_config.hidden_size, config.lm_config.hidden_size
+        )
         self.stop_actn = nn.SiLU()
         self.stop_head = nn.Linear(config.lm_config.hidden_size, 2, bias=False)
         self.stop_loss = nn.CrossEntropyLoss(reduction="none")
@@ -209,12 +228,16 @@ class VoxCPMModel(nn.Module):
         # LM: base_lm + residual_lm
         if cfg.enable_lm:
             for lm in [self.base_lm, self.residual_lm]:
-                apply_lora_to_named_linear_modules(lm, target_submodule_names=cfg.target_modules_lm, **lora_kwargs)
+                apply_lora_to_named_linear_modules(
+                    lm, target_submodule_names=cfg.target_modules_lm, **lora_kwargs
+                )
 
         # DiT: feat_decoder.estimator
         if cfg.enable_dit:
             apply_lora_to_named_linear_modules(
-                self.feat_decoder.estimator, target_submodule_names=cfg.target_modules_dit, **lora_kwargs
+                self.feat_decoder.estimator,
+                target_submodule_names=cfg.target_modules_dit,
+                **lora_kwargs,
             )
 
         # 投影层
@@ -236,12 +259,16 @@ class VoxCPMModel(nn.Module):
                 import triton  # noqa: F401
             except ImportError:
                 raise ValueError("triton is not installed")
-            self.base_lm.forward_step = torch.compile(self.base_lm.forward_step, mode="reduce-overhead", fullgraph=True)
+            self.base_lm.forward_step = torch.compile(
+                self.base_lm.forward_step, mode="reduce-overhead", fullgraph=True
+            )
             self.residual_lm.forward_step = torch.compile(
                 self.residual_lm.forward_step, mode="reduce-overhead", fullgraph=True
             )
             self._feat_encoder_raw = self.feat_encoder
-            self.feat_encoder = torch.compile(self.feat_encoder, mode="reduce-overhead", fullgraph=True)
+            self.feat_encoder = torch.compile(
+                self.feat_encoder, mode="reduce-overhead", fullgraph=True
+            )
             self.feat_decoder.estimator = torch.compile(
                 self.feat_decoder.estimator, mode="reduce-overhead", fullgraph=True
             )
@@ -279,22 +306,35 @@ class VoxCPMModel(nn.Module):
         if not getattr(self.config.lm_config, "use_mup", False):
             scale_emb = 1.0
         text_embed = self.base_lm.embed_tokens(text_tokens) * scale_emb
-        combined_embed = text_mask.unsqueeze(-1) * text_embed + audio_mask.unsqueeze(-1) * feat_embed
+        combined_embed = (
+            text_mask.unsqueeze(-1) * text_embed + audio_mask.unsqueeze(-1) * feat_embed
+        )
 
         enc_outputs, _ = self.base_lm(inputs_embeds=combined_embed, is_causal=True)
         enc_outputs = enc_outputs.to(self._dtype())
-        enc_outputs = self.fsq_layer(enc_outputs) * audio_mask.unsqueeze(-1) + enc_outputs * text_mask.unsqueeze(-1)
-        lm_hidden = torch.cat((torch.zeros_like(enc_outputs[:, 0:1, :]), enc_outputs[:, :-1, :]), dim=1)
+        enc_outputs = self.fsq_layer(enc_outputs) * audio_mask.unsqueeze(
+            -1
+        ) + enc_outputs * text_mask.unsqueeze(-1)
+        lm_hidden = torch.cat(
+            (torch.zeros_like(enc_outputs[:, 0:1, :]), enc_outputs[:, :-1, :]), dim=1
+        )
 
         residual_inputs = enc_outputs + audio_mask.unsqueeze(-1) * feat_embed
-        residual_outputs, _ = self.residual_lm(inputs_embeds=residual_inputs, is_causal=True)
+        residual_outputs, _ = self.residual_lm(
+            inputs_embeds=residual_inputs, is_causal=True
+        )
         residual_outputs = residual_outputs.to(self._dtype())
         residual_hidden = torch.cat(
-            (torch.zeros_like(residual_outputs[:, 0:1, :]), residual_outputs[:, :-1, :]),
+            (
+                torch.zeros_like(residual_outputs[:, 0:1, :]),
+                residual_outputs[:, :-1, :],
+            ),
             dim=1,
         )
 
-        dit_hidden = self.lm_to_dit_proj(lm_hidden) + self.res_to_dit_proj(residual_hidden)
+        dit_hidden = self.lm_to_dit_proj(lm_hidden) + self.res_to_dit_proj(
+            residual_hidden
+        )
         dit_hidden = rearrange(dit_hidden, "b t c -> (b t) c")
 
         # Keep diffusion inputs in the same dtype as the model (e.g., bfloat16)
@@ -336,9 +376,16 @@ class VoxCPMModel(nn.Module):
                     else 10
                 ),
             )
-            feat_pred = rearrange(feat_pred_seq.transpose(1, 2), "(b t) d p -> b d (t p)", b=B, p=self.patch_size)
+            feat_pred = rearrange(
+                feat_pred_seq.transpose(1, 2),
+                "(b t) d p -> b d (t p)",
+                b=B,
+                p=self.patch_size,
+            )
 
-        feat_gt_tensor = rearrange(feat_gt, "(b t) p d -> b d (t p)", b=B, p=self.patch_size)
+        feat_gt_tensor = rearrange(
+            feat_gt, "(b t) p d -> b d (t p)", b=B, p=self.patch_size
+        )
 
         return {
             "loss/diff": diff_loss,
@@ -353,7 +400,9 @@ class VoxCPMModel(nn.Module):
     def generate(self, *args, **kwargs) -> torch.Tensor:
         return next_and_close(self._generate(*args, streaming=False, **kwargs))
 
-    def generate_streaming(self, *args, **kwargs) -> Generator[torch.Tensor, None, None]:
+    def generate_streaming(
+        self, *args, **kwargs
+    ) -> Generator[torch.Tensor, None, None]:
         return self._generate(*args, streaming=True, **kwargs)
 
     @torch.inference_mode()
@@ -373,7 +422,9 @@ class VoxCPMModel(nn.Module):
         seed: Optional[int] = None,
     ) -> Generator[torch.Tensor, None, None]:
         if retry_badcase and streaming:
-            warnings.warn("Retry on bad cases is not supported in streaming mode, setting retry_badcase=False.")
+            warnings.warn(
+                "Retry on bad cases is not supported in streaming mode, setting retry_badcase=False."
+            )
             retry_badcase = False
         if len(prompt_wav_path) == 0:
             text = target_text
@@ -397,7 +448,9 @@ class VoxCPMModel(nn.Module):
                 device=text_token.device,
             )
             text_mask = torch.ones(text_length).type(torch.int32).to(text_token.device)
-            audio_mask = torch.zeros(text_length).type(torch.int32).to(text_token.device)
+            audio_mask = (
+                torch.zeros(text_length).type(torch.int32).to(text_token.device)
+            )
 
         else:
             text = prompt_text + target_text
@@ -405,7 +458,11 @@ class VoxCPMModel(nn.Module):
             text_token = torch.cat(
                 [
                     text_token,
-                    torch.tensor([self.audio_start_token], dtype=torch.int32, device=text_token.device),
+                    torch.tensor(
+                        [self.audio_start_token],
+                        dtype=torch.int32,
+                        device=text_token.device,
+                    ),
                 ],
                 dim=-1,
             )
@@ -426,14 +483,18 @@ class VoxCPMModel(nn.Module):
                 audio = torch.nn.functional.pad(audio, (padding_size, 0))
 
             # (B, D, T)
-            audio_feat = self.audio_vae.encode(audio.to(self.device), self.sample_rate).cpu()
+            audio_feat = self.audio_vae.encode(
+                audio.to(self.device), self.sample_rate
+            ).cpu()
             audio_feat = audio_feat.view(
                 self.audio_vae.latent_dim,
                 -1,
                 self.patch_size,
             ).permute(1, 2, 0)
             audio_length = audio_feat.size(0)
-            text_pad_token = torch.zeros(audio_length, dtype=torch.int32, device=text_token.device)
+            text_pad_token = torch.zeros(
+                audio_length, dtype=torch.int32, device=text_token.device
+            )
             text_token = torch.cat([text_token, text_pad_token])
             audio_pad_feat = torch.zeros(
                 (text_length, self.patch_size, self.audio_vae.latent_dim),
@@ -442,15 +503,21 @@ class VoxCPMModel(nn.Module):
             )
             audio_feat = torch.cat([audio_pad_feat, audio_feat], dim=0)
             text_mask = (
-                torch.cat([torch.ones(text_length), torch.zeros(audio_length)]).type(torch.int32).to(text_token.device)
+                torch.cat([torch.ones(text_length), torch.zeros(audio_length)])
+                .type(torch.int32)
+                .to(text_token.device)
             )
             audio_mask = (
-                torch.cat([torch.zeros(text_length), torch.ones(audio_length)]).type(torch.int32).to(text_token.device)
+                torch.cat([torch.zeros(text_length), torch.ones(audio_length)])
+                .type(torch.int32)
+                .to(text_token.device)
             )
 
         text_token = text_token.unsqueeze(0).to(self.device)
         text_mask = text_mask.unsqueeze(0).to(self.device)
-        audio_feat = audio_feat.unsqueeze(0).to(self.device).to(get_dtype(self.config.dtype))
+        audio_feat = (
+            audio_feat.unsqueeze(0).to(self.device).to(get_dtype(self.config.dtype))
+        )
         audio_mask = audio_mask.unsqueeze(0).to(self.device)
 
         target_text_length = len(self.text_tokenizer(target_text))
@@ -469,7 +536,8 @@ class VoxCPMModel(nn.Module):
                 audio_mask,
                 min_len=min_len,
                 max_len=min(
-                    int(target_text_length * retry_badcase_ratio_threshold + 10), max_len
+                    int(target_text_length * retry_badcase_ratio_threshold + 10),
+                    max_len,
                 ),  # avoid too long audio
                 inference_timesteps=inference_timesteps,
                 cfg_value=cfg_value,
@@ -486,7 +554,10 @@ class VoxCPMModel(nn.Module):
             else:
                 latent_pred, pred_audio_feat = next_and_close(inference_result)
                 if retry_badcase:
-                    if pred_audio_feat.shape[0] >= target_text_length * retry_badcase_ratio_threshold:
+                    if (
+                        pred_audio_feat.shape[0]
+                        >= target_text_length * retry_badcase_ratio_threshold
+                    ):
                         print(
                             f"  Badcase detected, audio_text_ratio={pred_audio_feat.shape[0] / target_text_length}, retrying...",
                             file=sys.stderr,
@@ -501,7 +572,9 @@ class VoxCPMModel(nn.Module):
 
         if not streaming:
             self.last_successful_seed = last_attempt_seed
-            decode_audio = self.audio_vae.decode(latent_pred.to(torch.float32)).squeeze(1).cpu()
+            decode_audio = (
+                self.audio_vae.decode(latent_pred.to(torch.float32)).squeeze(1).cpu()
+            )
             yield decode_audio
 
     @torch.inference_mode()
@@ -540,7 +613,9 @@ class VoxCPMModel(nn.Module):
             audio = torch.nn.functional.pad(audio, (padding_size, 0))
 
         # extract audio features
-        audio_feat = self.audio_vae.encode(audio.to(self.device), self.sample_rate).cpu()
+        audio_feat = self.audio_vae.encode(
+            audio.to(self.device), self.sample_rate
+        ).cpu()
 
         audio_feat = audio_feat.view(
             self.audio_vae.latent_dim,
@@ -593,8 +668,12 @@ class VoxCPMModel(nn.Module):
 
         return merged_cache
 
-    def generate_with_prompt_cache(self, *args, **kwargs) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        return next_and_close(self._generate_with_prompt_cache(*args, streaming=False, **kwargs))
+    def generate_with_prompt_cache(
+        self, *args, **kwargs
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        return next_and_close(
+            self._generate_with_prompt_cache(*args, streaming=False, **kwargs)
+        )
 
     def generate_with_prompt_cache_streaming(
         self, *args, **kwargs
@@ -616,7 +695,11 @@ class VoxCPMModel(nn.Module):
         streaming: bool = False,
         streaming_prefix_len: int = 3,
         seed: Optional[int] = None,
-    ) -> Generator[Tuple[torch.Tensor, torch.Tensor, Union[torch.Tensor, List[torch.Tensor]]], None, None]:
+    ) -> Generator[
+        Tuple[torch.Tensor, torch.Tensor, Union[torch.Tensor, List[torch.Tensor]]],
+        None,
+        None,
+    ]:
         """
         Generate audio using pre-built prompt cache.
 
@@ -640,11 +723,15 @@ class VoxCPMModel(nn.Module):
                 - New audio features up to the current step as a List if ``streaming=True``, else as a concatenated Tensor
         """
         if retry_badcase and streaming:
-            warnings.warn("Retry on bad cases is not supported in streaming mode, setting retry_badcase=False.")
+            warnings.warn(
+                "Retry on bad cases is not supported in streaming mode, setting retry_badcase=False."
+            )
             retry_badcase = False
         # get prompt from cache
         if prompt_cache is None:
-            prompt_audio_feat = torch.empty((0, self.patch_size, self.audio_vae.latent_dim), dtype=torch.float32)
+            prompt_audio_feat = torch.empty(
+                (0, self.patch_size, self.audio_vae.latent_dim), dtype=torch.float32
+            )
             text = target_text
         else:
             prompt_audio_feat = prompt_cache["audio_feat"]
@@ -668,7 +755,9 @@ class VoxCPMModel(nn.Module):
 
         audio_length = prompt_audio_feat.size(0)
         text_length = text_token.shape[0]
-        text_pad_token = torch.zeros(audio_length, dtype=torch.int32, device=text_token.device)
+        text_pad_token = torch.zeros(
+            audio_length, dtype=torch.int32, device=text_token.device
+        )
         audio_pad_feat = torch.zeros(
             (text_token.shape[0], self.patch_size, self.audio_vae.latent_dim),
             dtype=torch.float32,
@@ -677,15 +766,21 @@ class VoxCPMModel(nn.Module):
         text_token = torch.cat([text_token, text_pad_token])
         audio_feat = torch.cat([audio_pad_feat, prompt_audio_feat], dim=0)
         text_mask = (
-            torch.cat([torch.ones(text_length), torch.zeros(audio_length)]).type(torch.int32).to(text_token.device)
+            torch.cat([torch.ones(text_length), torch.zeros(audio_length)])
+            .type(torch.int32)
+            .to(text_token.device)
         )
         audio_mask = (
-            torch.cat([torch.zeros(text_length), torch.ones(audio_length)]).type(torch.int32).to(text_token.device)
+            torch.cat([torch.zeros(text_length), torch.ones(audio_length)])
+            .type(torch.int32)
+            .to(text_token.device)
         )
 
         text_token = text_token.unsqueeze(0).to(self.device)
         text_mask = text_mask.unsqueeze(0).to(self.device)
-        audio_feat = audio_feat.unsqueeze(0).to(self.device).to(get_dtype(self.config.dtype))
+        audio_feat = (
+            audio_feat.unsqueeze(0).to(self.device).to(get_dtype(self.config.dtype))
+        )
         audio_mask = audio_mask.unsqueeze(0).to(self.device)
 
         # run inference
@@ -704,7 +799,8 @@ class VoxCPMModel(nn.Module):
                 audio_mask,
                 min_len=min_len,
                 max_len=min(
-                    int(target_text_length * retry_badcase_ratio_threshold + 10), max_len
+                    int(target_text_length * retry_badcase_ratio_threshold + 10),
+                    max_len,
                 ),  # avoid too long audio
                 inference_timesteps=inference_timesteps,
                 cfg_value=cfg_value,
@@ -722,7 +818,10 @@ class VoxCPMModel(nn.Module):
             else:
                 latent_pred, pred_audio_feat = next_and_close(inference_result)
                 if retry_badcase:
-                    if pred_audio_feat.shape[0] >= target_text_length * retry_badcase_ratio_threshold:
+                    if (
+                        pred_audio_feat.shape[0]
+                        >= target_text_length * retry_badcase_ratio_threshold
+                    ):
                         print(
                             f"  Badcase detected, audio_text_ratio={pred_audio_feat.shape[0] / target_text_length}, retrying...",
                             file=sys.stderr,
@@ -739,7 +838,11 @@ class VoxCPMModel(nn.Module):
             decode_audio = self.audio_vae.decode(latent_pred.to(torch.float32))
             patch_len = self.patch_size * self.chunk_size
             if audio_mask.sum().item() > 0:
-                decode_audio = decode_audio[..., patch_len * (streaming_prefix_len - 1) :].squeeze(1).cpu()
+                decode_audio = (
+                    decode_audio[..., patch_len * (streaming_prefix_len - 1) :]
+                    .squeeze(1)
+                    .cpu()
+                )
             else:
                 decode_audio = decode_audio[..., :].squeeze(1).cpu()
             yield (decode_audio, target_text_token, pred_audio_feat)
@@ -747,7 +850,9 @@ class VoxCPMModel(nn.Module):
     def inference(self, *args, **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
         return next_and_close(self._inference(*args, streaming=False, **kwargs))
 
-    def inference_streaming(self, *args, **kwargs) -> Generator[Tuple[torch.Tensor, List[torch.Tensor]], None, None]:
+    def inference_streaming(
+        self, *args, **kwargs
+    ) -> Generator[Tuple[torch.Tensor, List[torch.Tensor]], None, None]:
         return self._inference(*args, streaming=True, **kwargs)
 
     @torch.inference_mode()
@@ -763,7 +868,9 @@ class VoxCPMModel(nn.Module):
         cfg_value: float = 2.0,
         streaming: bool = False,
         streaming_prefix_len: int = 3,
-    ) -> Generator[Tuple[torch.Tensor, Union[torch.Tensor, List[torch.Tensor]]], None, None]:
+    ) -> Generator[
+        Tuple[torch.Tensor, Union[torch.Tensor, List[torch.Tensor]]], None, None
+    ]:
         """Core inference method for audio generation.
 
         This is the main inference loop that generates audio features
@@ -797,7 +904,9 @@ class VoxCPMModel(nn.Module):
             scale_emb = 1.0
 
         text_embed = self.base_lm.embed_tokens(text) * scale_emb
-        combined_embed = text_mask.unsqueeze(-1) * text_embed + feat_mask.unsqueeze(-1) * feat_embed
+        combined_embed = (
+            text_mask.unsqueeze(-1) * text_embed + feat_mask.unsqueeze(-1) * feat_embed
+        )
 
         prefix_feat_cond = feat[:, -1, ...]  # b, p, d
         pred_feat_seq = []  # b, t, p, d
@@ -820,7 +929,9 @@ class VoxCPMModel(nn.Module):
         )
         self.base_lm.kv_cache.fill_caches(kv_cache_tuple)
 
-        enc_outputs = self.fsq_layer(enc_outputs) * feat_mask.unsqueeze(-1) + enc_outputs * text_mask.unsqueeze(-1)
+        enc_outputs = self.fsq_layer(enc_outputs) * feat_mask.unsqueeze(
+            -1
+        ) + enc_outputs * text_mask.unsqueeze(-1)
         lm_hidden = enc_outputs[:, -1, :]
 
         residual_enc_outputs, residual_kv_cache_tuple = self.residual_lm(
@@ -853,28 +964,42 @@ class VoxCPMModel(nn.Module):
 
             if streaming:
                 # return the last three predicted latent features to provide enough context for smooth decoding
-                pred_feat_chunk = torch.cat(pred_feat_seq[-streaming_prefix_len:], dim=1)
-                feat_pred = rearrange(pred_feat_chunk, "b t p d -> b d (t p)", b=B, p=self.patch_size)
+                pred_feat_chunk = torch.cat(
+                    pred_feat_seq[-streaming_prefix_len:], dim=1
+                )
+                feat_pred = rearrange(
+                    pred_feat_chunk, "b t p d -> b d (t p)", b=B, p=self.patch_size
+                )
 
                 yield feat_pred, pred_feat_seq
 
-            stop_flag = self.stop_head(self.stop_actn(self.stop_proj(lm_hidden))).argmax(dim=-1)[0].cpu().item()
+            stop_flag = (
+                self.stop_head(self.stop_actn(self.stop_proj(lm_hidden)))
+                .argmax(dim=-1)[0]
+                .cpu()
+                .item()
+            )
             if i > min_len and stop_flag == 1:
                 break
 
             lm_hidden = self.base_lm.forward_step(
-                curr_embed[:, 0, :], torch.tensor([self.base_lm.kv_cache.step()], device=curr_embed.device)
+                curr_embed[:, 0, :],
+                torch.tensor([self.base_lm.kv_cache.step()], device=curr_embed.device),
             ).clone()
 
             lm_hidden = self.fsq_layer(lm_hidden)
             residual_hidden = self.residual_lm.forward_step(
                 lm_hidden + curr_embed[:, 0, :],
-                torch.tensor([self.residual_lm.kv_cache.step()], device=curr_embed.device),
+                torch.tensor(
+                    [self.residual_lm.kv_cache.step()], device=curr_embed.device
+                ),
             ).clone()
 
         if not streaming:
             pred_feat_seq = torch.cat(pred_feat_seq, dim=1)  # b, t, p, d
-            feat_pred = rearrange(pred_feat_seq, "b t p d -> b d (t p)", b=B, p=self.patch_size)
+            feat_pred = rearrange(
+                pred_feat_seq, "b t p d -> b d (t p)", b=B, p=self.patch_size
+            )
             yield feat_pred, pred_feat_seq.squeeze(0).cpu()
 
     @classmethod
@@ -890,15 +1015,22 @@ class VoxCPMModel(nn.Module):
             config = VoxCPMConfig.model_validate_json(_cfg_f.read())
         tokenizer = LlamaTokenizerFast.from_pretrained(path)
         audio_vae_config = getattr(config, "audio_vae_config", None)
-        audio_vae = AudioVAE(config=audio_vae_config) if audio_vae_config else AudioVAE()
+        audio_vae = (
+            AudioVAE(config=audio_vae_config) if audio_vae_config else AudioVAE()
+        )
         # Try to load AudioVAE from safetensors first, fallback to pytorch
         audiovae_safetensors_path = os.path.join(path, "audiovae.safetensors")
         audiovae_pth_path = os.path.join(path, "audiovae.pth")
         if os.path.exists(audiovae_safetensors_path) and SAFETENSORS_AVAILABLE:
-            print(f"Loading AudioVAE from safetensors: {audiovae_safetensors_path}", file=sys.stderr)
+            print(
+                f"Loading AudioVAE from safetensors: {audiovae_safetensors_path}",
+                file=sys.stderr,
+            )
             vae_state_dict = load_file(audiovae_safetensors_path, device="cpu")
         elif os.path.exists(audiovae_pth_path):
-            print(f"Loading AudioVAE from pytorch: {audiovae_pth_path}", file=sys.stderr)
+            print(
+                f"Loading AudioVAE from pytorch: {audiovae_pth_path}", file=sys.stderr
+            )
             checkpoint = torch.load(
                 audiovae_pth_path,
                 map_location="cpu",
@@ -928,10 +1060,15 @@ class VoxCPMModel(nn.Module):
         pytorch_model_path = os.path.join(path, "pytorch_model.bin")
 
         if os.path.exists(safetensors_path) and SAFETENSORS_AVAILABLE:
-            print(f"Loading model from safetensors: {safetensors_path}", file=sys.stderr)
+            print(
+                f"Loading model from safetensors: {safetensors_path}", file=sys.stderr
+            )
             model_state_dict = load_file(safetensors_path)
         elif os.path.exists(pytorch_model_path):
-            print(f"Loading model from pytorch_model.bin: {pytorch_model_path}", file=sys.stderr)
+            print(
+                f"Loading model from pytorch_model.bin: {pytorch_model_path}",
+                file=sys.stderr,
+            )
             checkpoint = torch.load(
                 pytorch_model_path,
                 map_location="cpu",
@@ -939,7 +1076,9 @@ class VoxCPMModel(nn.Module):
             )
             model_state_dict = checkpoint.get("state_dict", checkpoint)
         else:
-            raise FileNotFoundError(f"Model file not found. Expected either {safetensors_path} or {pytorch_model_path}")
+            raise FileNotFoundError(
+                f"Model file not found. Expected either {safetensors_path} or {pytorch_model_path}"
+            )
 
         for kw, val in vae_state_dict.items():
             model_state_dict[f"audio_vae.{kw}"] = val
@@ -994,11 +1133,15 @@ class VoxCPMModel(nn.Module):
             ckpt = torch.load(ckpt_file, map_location=device, weights_only=True)
             state_dict = ckpt.get("state_dict", ckpt)
         else:
-            raise FileNotFoundError(f"LoRA checkpoint not found. Expected either {safetensors_file} or {ckpt_file}")
+            raise FileNotFoundError(
+                f"LoRA checkpoint not found. Expected either {safetensors_file} or {ckpt_file}"
+            )
 
         # Build param mapping (handle torch.compile's _orig_mod prefix)
         model_params = dict(self.named_parameters())
-        key_mapping = {k.replace("._orig_mod.", "."): k for k in model_params if "._orig_mod." in k}
+        key_mapping = {
+            k.replace("._orig_mod.", "."): k for k in model_params if "._orig_mod." in k
+        }
 
         loaded_keys, skipped_keys = [], []
         for key, value in state_dict.items():
@@ -1023,4 +1166,8 @@ class VoxCPMModel(nn.Module):
 
     def get_lora_state_dict(self) -> dict:
         """Get all LoRA parameters (lora_A/lora_B)."""
-        return {name: param.data.clone() for name, param in self.named_parameters() if "lora_" in name}
+        return {
+            name: param.data.clone()
+            for name, param in self.named_parameters()
+            if "lora_" in name
+        }

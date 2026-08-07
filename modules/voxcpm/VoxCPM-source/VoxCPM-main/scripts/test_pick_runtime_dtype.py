@@ -44,8 +44,20 @@ def expect_raises(fn, exc_type, label):
 results = []
 
 print("=== override set sanity ===")
-results.append(expect("half" not in _VALID_DTYPE_OVERRIDES, True, "half removed from _VALID_DTYPE_OVERRIDES"))
-results.append(expect("half" not in _LOW_PRECISION_DTYPES, True, "half removed from _LOW_PRECISION_DTYPES"))
+results.append(
+    expect(
+        "half" not in _VALID_DTYPE_OVERRIDES,
+        True,
+        "half removed from _VALID_DTYPE_OVERRIDES",
+    )
+)
+results.append(
+    expect(
+        "half" not in _LOW_PRECISION_DTYPES,
+        True,
+        "half removed from _LOW_PRECISION_DTYPES",
+    )
+)
 
 print("\n=== every accepted override parses through get_dtype ===")
 for dt in sorted(_VALID_DTYPE_OVERRIDES):
@@ -58,28 +70,58 @@ for dt in sorted(_VALID_DTYPE_OVERRIDES):
         results.append(False)
 
 print("\n=== pick_runtime_dtype: non-mps is a no-op ===")
-results.append(expect(pick_runtime_dtype("cuda", "bfloat16"), "bfloat16", "cuda/bf16 untouched"))
-results.append(expect(pick_runtime_dtype("cpu", "float16"), "float16", "cpu/fp16 untouched"))
-results.append(expect(pick_runtime_dtype("cuda", "float32"), "float32", "cuda/fp32 untouched"))
+results.append(
+    expect(pick_runtime_dtype("cuda", "bfloat16"), "bfloat16", "cuda/bf16 untouched")
+)
+results.append(
+    expect(pick_runtime_dtype("cpu", "float16"), "float16", "cpu/fp16 untouched")
+)
+results.append(
+    expect(pick_runtime_dtype("cuda", "float32"), "float32", "cuda/fp32 untouched")
+)
 
 print("\n=== pick_runtime_dtype: mps forces fp32 for low-precision ===")
 os.environ.pop("VOXCPM_MPS_DTYPE", None)
-results.append(expect(pick_runtime_dtype("mps", "bfloat16"), "float32", "mps/bf16 -> fp32"))
-results.append(expect(pick_runtime_dtype("mps", "bf16"), "float32", "mps/bf16-alias -> fp32"))
-results.append(expect(pick_runtime_dtype("mps", "float16"), "float32", "mps/fp16 -> fp32"))
-results.append(expect(pick_runtime_dtype("mps", "fp16"), "float32", "mps/fp16-alias -> fp32"))
-results.append(expect(pick_runtime_dtype("mps", "float32"), "float32", "mps/fp32 stays"))
-results.append(expect(pick_runtime_dtype("mps", "fp32"), "fp32", "mps/fp32-alias stays"))
+results.append(
+    expect(pick_runtime_dtype("mps", "bfloat16"), "float32", "mps/bf16 -> fp32")
+)
+results.append(
+    expect(pick_runtime_dtype("mps", "bf16"), "float32", "mps/bf16-alias -> fp32")
+)
+results.append(
+    expect(pick_runtime_dtype("mps", "float16"), "float32", "mps/fp16 -> fp32")
+)
+results.append(
+    expect(pick_runtime_dtype("mps", "fp16"), "float32", "mps/fp16-alias -> fp32")
+)
+results.append(
+    expect(pick_runtime_dtype("mps", "float32"), "float32", "mps/fp32 stays")
+)
+results.append(
+    expect(pick_runtime_dtype("mps", "fp32"), "fp32", "mps/fp32-alias stays")
+)
 
 print("\n=== pick_runtime_dtype: VOXCPM_MPS_DTYPE override ===")
 os.environ["VOXCPM_MPS_DTYPE"] = "bfloat16"
-results.append(expect(pick_runtime_dtype("mps", "bfloat16"), "bfloat16", "override bf16 honored"))
+results.append(
+    expect(pick_runtime_dtype("mps", "bfloat16"), "bfloat16", "override bf16 honored")
+)
 
 os.environ["VOXCPM_MPS_DTYPE"] = "FP16"
-results.append(expect(pick_runtime_dtype("mps", "bfloat16"), "fp16", "override is case-insensitive"))
+results.append(
+    expect(
+        pick_runtime_dtype("mps", "bfloat16"), "fp16", "override is case-insensitive"
+    )
+)
 
 os.environ["VOXCPM_MPS_DTYPE"] = "  float32  "
-results.append(expect(pick_runtime_dtype("mps", "bfloat16"), "float32", "override is whitespace-trimmed"))
+results.append(
+    expect(
+        pick_runtime_dtype("mps", "bfloat16"),
+        "float32",
+        "override is whitespace-trimmed",
+    )
+)
 
 print("\n=== pick_runtime_dtype: 'half' is no longer a valid override ===")
 os.environ["VOXCPM_MPS_DTYPE"] = "half"

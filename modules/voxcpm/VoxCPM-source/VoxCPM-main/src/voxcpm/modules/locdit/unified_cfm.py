@@ -2,8 +2,8 @@ from typing import Tuple
 
 import torch
 import torch.nn.functional as F
-from torch.func import jvp
 from pydantic import BaseModel
+from torch.func import jvp
 
 from .local_dit import VoxCPMLocDiT
 
@@ -61,10 +61,15 @@ class UnifiedCFM(torch.nn.Module):
     ):
         b, _ = mu.shape
         t = patch_size
-        z = torch.randn((b, self.in_channels, t), device=mu.device, dtype=mu.dtype) * temperature
+        z = (
+            torch.randn((b, self.in_channels, t), device=mu.device, dtype=mu.dtype)
+            * temperature
+        )
 
         t_span = torch.linspace(1, 0, n_timesteps + 1, device=mu.device, dtype=mu.dtype)
-        t_span = t_span + sway_sampling_coef * (torch.cos(torch.pi / 2 * t_span) - 1 + t_span)
+        t_span = t_span + sway_sampling_coef * (
+            torch.cos(torch.pi / 2 * t_span) - 1 + t_span
+        )
 
         return self.solve_euler(
             x=z,
@@ -100,11 +105,17 @@ class UnifiedCFM(torch.nn.Module):
             else:
                 # Classifier-Free Guidance inference introduced in VoiceBox
                 b = x.size(0)
-                x_in = torch.zeros([2 * b, self.in_channels, x.size(2)], device=x.device, dtype=x.dtype)
+                x_in = torch.zeros(
+                    [2 * b, self.in_channels, x.size(2)], device=x.device, dtype=x.dtype
+                )
                 mu_in = torch.zeros([2 * b, mu.size(1)], device=x.device, dtype=x.dtype)
                 t_in = torch.zeros([2 * b], device=x.device, dtype=x.dtype)
                 dt_in = torch.zeros([2 * b], device=x.device, dtype=x.dtype)
-                cond_in = torch.zeros([2 * b, self.in_channels, cond.size(2)], device=x.device, dtype=x.dtype)
+                cond_in = torch.zeros(
+                    [2 * b, self.in_channels, cond.size(2)],
+                    device=x.device,
+                    dtype=x.dtype,
+                )
                 x_in[:b], x_in[b:] = x, x
                 mu_in[:b] = mu
                 t_in[:b], t_in[b:] = t.unsqueeze(0), t.unsqueeze(0)
@@ -115,7 +126,9 @@ class UnifiedCFM(torch.nn.Module):
                 cond_in[:b], cond_in[b:] = cond, cond
 
                 dphi_dt = self.estimator(x_in, mu_in, t_in, cond_in, dt_in)
-                dphi_dt, cfg_dphi_dt = torch.split(dphi_dt, [x.size(0), x.size(0)], dim=0)
+                dphi_dt, cfg_dphi_dt = torch.split(
+                    dphi_dt, [x.size(0), x.size(0)], dim=0
+                )
 
                 if use_cfg_zero_star:
                     positive_flat = dphi_dt.view(b, -1)
@@ -125,7 +138,9 @@ class UnifiedCFM(torch.nn.Module):
                 else:
                     st_star = 1.0
 
-                dphi_dt = cfg_dphi_dt * st_star + cfg_value * (dphi_dt - cfg_dphi_dt * st_star)
+                dphi_dt = cfg_dphi_dt * st_star + cfg_value * (
+                    dphi_dt - cfg_dphi_dt * st_star
+                )
 
             x = x - dt * dphi_dt
             t = t - dt
@@ -139,14 +154,24 @@ class UnifiedCFM(torch.nn.Module):
     # Training loss
     # ------------------------------------------------------------------ #
     def adaptive_loss_weighting(
-        self, losses: torch.Tensor, mask: torch.Tensor | None = None, p: float = 0.0, epsilon: float = 1e-3
+        self,
+        losses: torch.Tensor,
+        mask: torch.Tensor | None = None,
+        p: float = 0.0,
+        epsilon: float = 1e-3,
     ):
         weights = 1.0 / ((losses + epsilon).pow(p))
         if mask is not None:
             weights = weights * mask
         return weights.detach()
 
-    def sample_r_t(self, x: torch.Tensor, mu: float = -0.4, sigma: float = 1.0, ratio_r_neq_t: float = 0.0):
+    def sample_r_t(
+        self,
+        x: torch.Tensor,
+        mu: float = -0.4,
+        sigma: float = 1.0,
+        ratio_r_neq_t: float = 0.0,
+    ):
         batch_size = x.shape[0]
         if self.t_scheduler == "log-norm":
             s_r = torch.randn(batch_size, device=x.device, dtype=x.dtype) * sigma + mu
@@ -189,13 +214,18 @@ class UnifiedCFM(torch.nn.Module):
             1.0
             - (
                 self.noise_cond_prob_range[0]
-                + progress * (self.noise_cond_prob_range[1] - self.noise_cond_prob_range[0])
+                + progress
+                * (self.noise_cond_prob_range[1] - self.noise_cond_prob_range[0])
             )
         )
-        cond = cond + noisy_mask.view(-1, 1, 1) * torch.randn_like(cond) * self.noise_cond_scale
+        cond = (
+            cond
+            + noisy_mask.view(-1, 1, 1) * torch.randn_like(cond) * self.noise_cond_scale
+        )
 
         ratio_r_neq_t = (
-            self.ratio_r_neq_t_range[0] + progress * (self.ratio_r_neq_t_range[1] - self.ratio_r_neq_t_range[0])
+            self.ratio_r_neq_t_range[0]
+            + progress * (self.ratio_r_neq_t_range[1] - self.ratio_r_neq_t_range[0])
             if self.mean_mode
             else 0.0
         )

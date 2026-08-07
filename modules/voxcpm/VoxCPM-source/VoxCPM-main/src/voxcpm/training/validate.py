@@ -44,7 +44,10 @@ def _check_audio_file(audio_path: str, sample_rate: int) -> Optional[str]:
         if info.frames == 0:
             return f"Audio file is empty: {audio_path}"
         if info.samplerate != sample_rate:
-            return f"Sample rate mismatch in {audio_path}: " f"expected {sample_rate} Hz, got {info.samplerate} Hz"
+            return (
+                f"Sample rate mismatch in {audio_path}: "
+                f"expected {sample_rate} Hz, got {info.samplerate} Hz"
+            )
         return None
     except ImportError:
         # soundfile not available; just check existence
@@ -136,7 +139,9 @@ def validate_manifest(
             continue
 
         if not isinstance(entry, dict):
-            result.errors.append(f"Line {i + 1}: Expected JSON object, got {type(entry).__name__}")
+            result.errors.append(
+                f"Line {i + 1}: Expected JSON object, got {type(entry).__name__}"
+            )
             continue
 
         # Check required columns
@@ -184,9 +189,13 @@ def validate_manifest(
                 if duration is not None:
                     result.audio_durations.append(duration)
                     if duration < 0.3:
-                        result.warnings.append(f"Line {i + 1}: Very short audio ({duration:.2f}s)")
+                        result.warnings.append(
+                            f"Line {i + 1}: Very short audio ({duration:.2f}s)"
+                        )
                     elif duration > 30.0:
-                        result.warnings.append(f"Line {i + 1}: Very long audio ({duration:.1f}s), may cause OOM")
+                        result.warnings.append(
+                            f"Line {i + 1}: Very long audio ({duration:.1f}s), may cause OOM"
+                        )
         else:
             result.errors.append(f"Line {i + 1}: Invalid audio path")
             has_error = True
@@ -202,7 +211,9 @@ def validate_manifest(
                 if os.path.isfile(ref_path):
                     result.has_ref_audio += 1
                 else:
-                    result.warnings.append(f"Line {i + 1}: ref_audio file not found: {ref_path}")
+                    result.warnings.append(
+                        f"Line {i + 1}: ref_audio file not found: {ref_path}"
+                    )
 
         if not has_error:
             result.valid_samples += 1
@@ -213,10 +224,14 @@ def validate_manifest(
     # Summarize truncated errors
     if missing_audio_count > 5:
         result.errors.append(
-            f"... and {missing_audio_count - 5} more missing audio files " f"({missing_audio_count} total)"
+            f"... and {missing_audio_count - 5} more missing audio files "
+            f"({missing_audio_count} total)"
         )
     if empty_text_count > 5:
-        result.warnings.append(f"... and {empty_text_count - 5} more empty text entries " f"({empty_text_count} total)")
+        result.warnings.append(
+            f"... and {empty_text_count - 5} more empty text entries "
+            f"({empty_text_count} total)"
+        )
 
     return result
 
@@ -227,7 +242,10 @@ def print_validation_report(result: ValidationResult, manifest_path: str) -> Non
     print(f"  VoxCPM Training Data Validation Report", file=sys.stderr)
     print(f"{'=' * 60}", file=sys.stderr)
     print(f"  Manifest : {manifest_path}", file=sys.stderr)
-    print(f"  Samples  : {result.valid_samples}/{result.total_samples} valid", file=sys.stderr)
+    print(
+        f"  Samples  : {result.valid_samples}/{result.total_samples} valid",
+        file=sys.stderr,
+    )
 
     if result.has_ref_audio > 0:
         print(

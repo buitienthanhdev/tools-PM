@@ -8,16 +8,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 
-device = 'dml'
-result_path = os.getcwd()+'/baboon_upscaled.png'
-img = os.getcwd()+'/baboon.png'
-backend = 'GPU'
+device = "dml"
+result_path = os.getcwd() + "/baboon_upscaled.png"
+img = os.getcwd() + "/baboon.png"
+backend = "GPU"
+
 
 def make_layer(block, n_layers):
     layers = []
     for _ in range(n_layers):
         layers.append(block())
     return nn.Sequential(*layers)
+
 
 class ResidualDenseBlock_5C(nn.Module):
     def __init__(self, nf=64, gc=32, bias=True):
@@ -32,7 +34,8 @@ class ResidualDenseBlock_5C(nn.Module):
 
         # initialization
         initialize_weights(
-            [self.conv1, self.conv2, self.conv3, self.conv4, self.conv5], 0.1)
+            [self.conv1, self.conv2, self.conv3, self.conv4, self.conv5], 0.1
+        )
 
     def forward(self, x):
         x1 = self.lrelu(self.conv1(x))
@@ -42,8 +45,9 @@ class ResidualDenseBlock_5C(nn.Module):
         x5 = self.conv5(torch.cat((x, x1, x2, x3, x4), 1))
         return x5 * 0.2 + x
 
+
 class RRDB(nn.Module):
-    '''Residual in Residual Dense Block'''
+    """Residual in Residual Dense Block"""
 
     def __init__(self, nf, gc=32):
         super(RRDB, self).__init__()
@@ -56,6 +60,7 @@ class RRDB(nn.Module):
         out = self.RDB2(out)
         out = self.RDB3(out)
         return out * 0.2 + x
+
 
 class RRDBNet(nn.Module):
     def __init__(self, in_nc=3, out_nc=3, nf=64, nb=23, gc=32, sf=4):
@@ -80,14 +85,17 @@ class RRDBNet(nn.Module):
         trunk = self.trunk_conv(self.RRDB_trunk(fea))
         fea = fea + trunk
 
-        fea = self.lrelu(self.upconv1(F.interpolate(
-            fea, scale_factor=2, mode='nearest')))
+        fea = self.lrelu(
+            self.upconv1(F.interpolate(fea, scale_factor=2, mode="nearest"))
+        )
         if self.sf == 4:
-            fea = self.lrelu(self.upconv2(F.interpolate(
-                fea, scale_factor=2, mode='nearest')))
+            fea = self.lrelu(
+                self.upconv2(F.interpolate(fea, scale_factor=2, mode="nearest"))
+            )
         out = self.conv_last(self.lrelu(self.HRconv(fea)))
 
         return out
+
 
 def initialize_weights(net_l, scale=1):
     if not isinstance(net_l, list):
@@ -95,18 +103,19 @@ def initialize_weights(net_l, scale=1):
     for net in net_l:
         for m in net.modules():
             if isinstance(m, nn.Conv2d):
-                init.kaiming_normal_(m.weight, a=0, mode='fan_in')
+                init.kaiming_normal_(m.weight, a=0, mode="fan_in")
                 m.weight.data *= scale  # for residual block
                 if m.bias is not None:
                     m.bias.data.zero_()
             elif isinstance(m, nn.Linear):
-                init.kaiming_normal_(m.weight, a=0, mode='fan_in')
+                init.kaiming_normal_(m.weight, a=0, mode="fan_in")
                 m.weight.data *= scale
                 if m.bias is not None:
                     m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm2d):
                 init.constant_(m.weight, 1)
                 init.constant_(m.bias.data, 0.0)
+
 
 def image_to_uint(path, n_channels=3):
     if n_channels == 1:
@@ -120,28 +129,38 @@ def image_to_uint(path, n_channels=3):
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # RGB
     return img
 
+
 def uint_to_tensor4(img):
     if img.ndim == 2:
         img = np.expand_dims(img, axis=2)
-    return torch.from_numpy(np.ascontiguousarray(img)).permute(2, 0, 1).float().div(255.).unsqueeze(0)
+    return (
+        torch.from_numpy(np.ascontiguousarray(img))
+        .permute(2, 0, 1)
+        .float()
+        .div(255.0)
+        .unsqueeze(0)
+    )
+
 
 def adapt_image_for_deeplearning(img, device):
-    if 'cpu' in device:
-        backend = torch.device('cpu')
-    elif 'dml' in device:
-        backend = torch.device('dml')
+    if "cpu" in device:
+        backend = torch.device("cpu")
+    elif "dml" in device:
+        backend = torch.device("dml")
 
     img = image_to_uint(img, n_channels=3)
     img = uint_to_tensor4(img)
     img = img.to(backend, non_blocking=True)
-    
+
     return img
+
 
 def tensor_to_uint(img):
     img = img.data.squeeze().float().clamp_(0, 1).cpu().numpy()
     if img.ndim == 3:
         img = np.transpose(img, (1, 2, 0))
-    return np.uint8((img*255.0).round())
+    return np.uint8((img * 255.0).round())
+
 
 def save_image(img, img_path):
     img = np.squeeze(img)
@@ -149,13 +168,14 @@ def save_image(img, img_path):
         img = img[:, :, [2, 1, 0]]
     cv2.imwrite(img_path, img)
 
-def prepare_AI_model(AI_model, device):
-    if 'cpu' in device:
-        backend = torch.device('cpu')
-    elif 'dml' in device:
-        backend = torch.device('dml')
 
-    model_path = (r"C:\Users\ghosh\OneDrive\Documents\progams\QualityScaler\BSRGAN.pth")
+def prepare_AI_model(AI_model, device):
+    if "cpu" in device:
+        backend = torch.device("cpu")
+    elif "dml" in device:
+        backend = torch.device("dml")
+
+    model_path = r"C:\Users\ghosh\OneDrive\Documents\progams\QualityScaler\BSRGAN.pth"
 
     model = RRDBNet(in_nc=3, out_nc=3, nf=64, nb=23, gc=32, sf=4)
     model.load_state_dict(torch.load(model_path), strict=True)
@@ -163,16 +183,16 @@ def prepare_AI_model(AI_model, device):
 
     for _, v in model.named_parameters():
         v.requires_grad = False
-    
+
     model = model.to(backend, non_blocking=True)
 
     return model
 
-model = prepare_AI_model('BSRGAN', device)
+
+model = prepare_AI_model("BSRGAN", device)
 
 
-
-img_adapted  = adapt_image_for_deeplearning(img, device)
+img_adapted = adapt_image_for_deeplearning(img, device)
 img_upscaled = tensor_to_uint(model(img_adapted))
 
 save_image(img_upscaled, result_path)

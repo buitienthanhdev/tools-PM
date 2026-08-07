@@ -3,10 +3,10 @@ from typing import List
 
 import numpy as np
 import torch
-from torch import nn
 import torch.nn.functional as F
-from torch.nn.utils import weight_norm
 from pydantic import BaseModel
+from torch import nn
+from torch.nn.utils import weight_norm
 
 
 def WNConv1d(*args, **kwargs):
@@ -72,7 +72,9 @@ def init_weights(m):
 
 
 class CausalResidualUnit(nn.Module):
-    def __init__(self, dim: int = 16, dilation: int = 1, kernel: int = 7, groups: int = 1):
+    def __init__(
+        self, dim: int = 16, dilation: int = 1, kernel: int = 7, groups: int = 1
+    ):
         super().__init__()
         pad = ((7 - 1) * dilation) // 2
         self.block = nn.Sequential(
@@ -136,7 +138,9 @@ class CausalEncoder(nn.Module):
         for stride in strides:
             d_model *= 2
             groups = d_model // 2 if depthwise else 1
-            self.block += [CausalEncoderBlock(output_dim=d_model, stride=stride, groups=groups)]
+            self.block += [
+                CausalEncoderBlock(output_dim=d_model, stride=stride, groups=groups)
+            ]
 
         groups = d_model if depthwise else 1
 

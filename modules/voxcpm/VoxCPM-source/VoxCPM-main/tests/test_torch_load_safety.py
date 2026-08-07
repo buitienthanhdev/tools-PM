@@ -20,7 +20,12 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Directories whose Python files load checkpoints at runtime / on resume.
-SCANNED_DIRS = [REPO_ROOT / "src", REPO_ROOT / "scripts", REPO_ROOT / "app.py", REPO_ROOT / "lora_ft_webui.py"]
+SCANNED_DIRS = [
+    REPO_ROOT / "src",
+    REPO_ROOT / "scripts",
+    REPO_ROOT / "app.py",
+    REPO_ROOT / "lora_ft_webui.py",
+]
 
 
 def _python_files():
@@ -58,9 +63,10 @@ def test_every_torch_load_sets_weights_only_true():
                     offenders.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}")
 
     assert checked > 0, "expected to find at least one torch.load call to verify"
-    assert not offenders, (
-        "torch.load without weights_only=True (pickle RCE risk):\n  "
-        + "\n  ".join(offenders)
+    assert (
+        not offenders
+    ), "torch.load without weights_only=True (pickle RCE risk):\n  " + "\n  ".join(
+        offenders
     )
 
 

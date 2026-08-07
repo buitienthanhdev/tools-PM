@@ -1,7 +1,8 @@
 # some functions are copied from https://github.com/FunAudioLLM/CosyVoice/blob/main/cosyvoice/utils/frontend_utils.py
 import re
-import regex
+
 import inflect
+import regex
 from wetext import Normalizer
 
 chinese_char_pattern = re.compile(r"[\u4e00-\u9fff]+")
@@ -55,7 +56,15 @@ def spell_out_number(text: str, inflect_parser):
 # 1. per sentence max len token_max_n, min len token_min_n, merge if last sentence len less than merge_len
 # 2. cal sentence len according to lang
 # 3. split sentence according to puncatation
-def split_paragraph(text: str, tokenize, lang="zh", token_max_n=80, token_min_n=60, merge_len=20, comma_split=False):
+def split_paragraph(
+    text: str,
+    tokenize,
+    lang="zh",
+    token_max_n=80,
+    token_min_n=60,
+    merge_len=20,
+    comma_split=False,
+):
     def calc_utt_length(_text: str):
         if lang == "zh":
             return len(_text)
@@ -94,7 +103,10 @@ def split_paragraph(text: str, tokenize, lang="zh", token_max_n=80, token_min_n=
     final_utts = []
     cur_utt = ""
     for utt in utts:
-        if calc_utt_length(cur_utt + utt) > token_max_n and calc_utt_length(cur_utt) > token_min_n:
+        if (
+            calc_utt_length(cur_utt + utt) > token_max_n
+            and calc_utt_length(cur_utt) > token_min_n
+        ):
             final_utts.append(cur_utt)
             cur_utt = ""
         cur_utt = cur_utt + utt
@@ -112,7 +124,9 @@ def replace_blank(text: str):
     out_str = []
     for i, c in enumerate(text):
         if c == " ":
-            if (text[i + 1].isascii() and text[i + 1] != " ") and (text[i - 1].isascii() and text[i - 1] != " "):
+            if (text[i + 1].isascii() and text[i + 1] != " ") and (
+                text[i - 1].isascii() and text[i - 1] != " "
+            ):
                 out_str.append(c)
         else:
             out_str.append(c)
@@ -152,7 +166,9 @@ def clean_text(text):
     # 去除 Markdown 语法
     text = clean_markdown(text)
     # 匹配并移除表情符号
-    text = regex.compile(r"\p{Emoji_Presentation}|\p{Emoji}\uFE0F", flags=regex.UNICODE).sub("", text)
+    text = regex.compile(
+        r"\p{Emoji_Presentation}|\p{Emoji}\uFE0F", flags=regex.UNICODE
+    ).sub("", text)
     # 去除换行符
     text = text.replace("\n", " ")
     text = text.replace("\t", " ")
@@ -176,7 +192,9 @@ class TextNormalizer:
                 "=", "等于"
             )  # 修复 ”550 + 320 等于 870 千卡。“ 被错误正则为 ”五百五十加三百二十等于八七十千卡.“
             if re.search(r"([\d$%^*_+≥≤≠×÷?=])", text):  # 避免 英文连字符被错误正则为减
-                text = re.sub(r"(?<=[a-zA-Z0-9])-(?=\d)", " - ", text)  # 修复 x-2 被正则为 x负2
+                text = re.sub(
+                    r"(?<=[a-zA-Z0-9])-(?=\d)", " - ", text
+                )  # 修复 x-2 被正则为 x负2
             text = self.zh_tn_model.normalize(text)
             text = replace_blank(text)
             text = replace_corner_mark(text)

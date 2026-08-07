@@ -28,7 +28,6 @@ import sys
 from pathlib import Path
 
 import soundfile as sf
-
 from voxcpm.core import VoxCPM
 
 
@@ -113,7 +112,9 @@ def main():
 
     print(f"[FT Inference] Synthesizing: text='{args.text}'", file=sys.stderr)
     if prompt_wav_path:
-        print(f"[FT Inference] Using reference audio: {prompt_wav_path}", file=sys.stderr)
+        print(
+            f"[FT Inference] Using reference audio: {prompt_wav_path}", file=sys.stderr
+        )
         print(f"[FT Inference] Reference text: {prompt_text}", file=sys.stderr)
 
     if args.seed is not None:

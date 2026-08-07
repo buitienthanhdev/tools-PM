@@ -43,7 +43,11 @@ def load_audio_text_datasets(
             ds = ds.rename_column(text_column, DEFAULT_TEXT_COLUMN)
 
         # ref_audio is optional — cast to Audio if the column exists
-        ref_col = ref_audio_column if ref_audio_column in ds.column_names else DEFAULT_REF_AUDIO_COLUMN
+        ref_col = (
+            ref_audio_column
+            if ref_audio_column in ds.column_names
+            else DEFAULT_REF_AUDIO_COLUMN
+        )
         if ref_col in ds.column_names:
             ds = ds.cast_column(ref_col, Audio(sampling_rate=sample_rate))
             if ref_col != DEFAULT_REF_AUDIO_COLUMN:
@@ -57,7 +61,9 @@ def load_audio_text_datasets(
         return ds
 
     train_ds = prepare(dataset_dict["train"])
-    val_ds = prepare(dataset_dict["validation"]) if "validation" in dataset_dict else None
+    val_ds = (
+        prepare(dataset_dict["validation"]) if "validation" in dataset_dict else None
+    )
     return train_ds, val_ds
 
 
@@ -107,7 +113,11 @@ def compute_sample_lengths(
                 ref_dur = ds[i].get(ref_duration_col)
             else:
                 ref_item = ds[i].get(DEFAULT_REF_AUDIO_COLUMN)
-                ref_dur = len(ref_item["array"]) / float(ref_item["sampling_rate"]) if ref_item else None
+                ref_dur = (
+                    len(ref_item["array"]) / float(ref_item["sampling_rate"])
+                    if ref_item
+                    else None
+                )
             if ref_dur is not None and float(ref_dur) > 0:
                 ref_vae = math.ceil(float(ref_dur) * audio_vae_fps)
                 ref_seq = math.ceil(ref_vae / patch_size)
@@ -165,9 +175,15 @@ class HFVoxCPMDataset(TorchDataset):
 
     @classmethod
     def collate_fn(cls, batch: List[Dict]):
-        text_tensors = [torch.tensor(sample["text_ids"], dtype=torch.int32) for sample in batch]
-        audio_tensors = [torch.tensor(sample["audio_array"], dtype=torch.float32) for sample in batch]
-        dataset_ids = torch.tensor([sample["dataset_id"] for sample in batch], dtype=torch.int32)
+        text_tensors = [
+            torch.tensor(sample["text_ids"], dtype=torch.int32) for sample in batch
+        ]
+        audio_tensors = [
+            torch.tensor(sample["audio_array"], dtype=torch.float32) for sample in batch
+        ]
+        dataset_ids = torch.tensor(
+            [sample["dataset_id"] for sample in batch], dtype=torch.int32
+        )
         is_prompts = [bool(sample.get("is_prompt", False)) for sample in batch]
 
         text_padded = cls.pad_sequences(text_tensors, pad_value=-100)
@@ -183,8 +199,12 @@ class HFVoxCPMDataset(TorchDataset):
         }
 
         if "ref_audio_array" in batch[0]:
-            ref_tensors = [torch.tensor(s["ref_audio_array"], dtype=torch.float32) for s in batch]
-            result["ref_audio_tokens"] = cls.pad_sequences(ref_tensors, pad_value=-100.0)
+            ref_tensors = [
+                torch.tensor(s["ref_audio_array"], dtype=torch.float32) for s in batch
+            ]
+            result["ref_audio_tokens"] = cls.pad_sequences(
+                ref_tensors, pad_value=-100.0
+            )
 
         return result
 

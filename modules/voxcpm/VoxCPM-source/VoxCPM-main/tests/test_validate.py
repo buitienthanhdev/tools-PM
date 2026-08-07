@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 import tempfile
 import types
@@ -34,8 +33,8 @@ def tmp_dir():
 def _create_wav(path: Path, duration_s: float = 1.0, sr: int = 16000):
     """Create a minimal valid WAV file."""
     try:
-        import soundfile as sf
         import numpy as np
+        import soundfile as sf
 
         samples = int(duration_s * sr)
         data = np.zeros(samples, dtype=np.float32)
@@ -200,8 +199,8 @@ class TestValidateManifest:
     def test_sample_rate_mismatch(self, tmp_dir):
         """A file with a different sample rate should be reported as an error."""
         try:
-            import soundfile as sf
             import numpy as np
+            import soundfile as sf
         except ImportError:
             pytest.skip("soundfile not available")
 
@@ -217,7 +216,10 @@ class TestValidateManifest:
         result = validate_manifest(str(manifest), sample_rate=16000)
         assert result.valid_samples == 0
         assert not result.is_valid
-        assert any("Sample rate mismatch" in e or "sample rate" in e.lower() for e in result.errors)
+        assert any(
+            "Sample rate mismatch" in e or "sample rate" in e.lower()
+            for e in result.errors
+        )
 
     def test_mixed_ref_audio_warns_for_each_missing(self, tmp_dir):
         """Missing ref_audio entries should each generate a warning independently."""
@@ -231,7 +233,11 @@ class TestValidateManifest:
             manifest,
             [
                 {"text": "row1", "audio": str(audio), "ref_audio": str(ref_good)},
-                {"text": "row2", "audio": str(audio), "ref_audio": "/nonexistent/ref.wav"},
+                {
+                    "text": "row2",
+                    "audio": str(audio),
+                    "ref_audio": "/nonexistent/ref.wav",
+                },
             ],
         )
         result = validate_manifest(str(manifest))
@@ -246,7 +252,14 @@ class TestValidateManifest:
         _write_manifest(manifest, [{"text": "hi", "audio": "/nonexistent/x.wav"}])
 
         proc = subprocess.run(
-            [sys.executable, "-m", "voxcpm.cli", "validate", "--manifest", str(manifest)],
+            [
+                sys.executable,
+                "-m",
+                "voxcpm.cli",
+                "validate",
+                "--manifest",
+                str(manifest),
+            ],
             capture_output=True,
             text=True,
         )

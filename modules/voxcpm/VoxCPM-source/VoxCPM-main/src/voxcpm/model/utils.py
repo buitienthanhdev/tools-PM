@@ -1,5 +1,6 @@
 import os
 from typing import List, Optional
+
 import torch
 from transformers import PreTrainedTokenizer
 
@@ -58,7 +59,9 @@ def mask_multichar_chinese_tokens(tokenizer: PreTrainedTokenizer):
     """
     # Pre-compute multi-character tokens (length >= 2, pure Chinese characters)
     multichar_tokens = {
-        token for token in tokenizer.vocab.keys() if len(token) >= 2 and all("\u4e00" <= c <= "\u9fff" for c in token)
+        token
+        for token in tokenizer.vocab.keys()
+        if len(token) >= 2 and all("\u4e00" <= c <= "\u9fff" for c in token)
     }
 
     class CharTokenizerWrapper:
@@ -176,7 +179,10 @@ def pick_runtime_dtype(device: str, configured_dtype: str) -> str:
     override = os.environ.get("VOXCPM_MPS_DTYPE", "").strip().lower()
     if override:
         if override not in _VALID_DTYPE_OVERRIDES:
-            raise ValueError(f"VOXCPM_MPS_DTYPE='{override}' is not one of " f"{sorted(_VALID_DTYPE_OVERRIDES)}")
+            raise ValueError(
+                f"VOXCPM_MPS_DTYPE='{override}' is not one of "
+                f"{sorted(_VALID_DTYPE_OVERRIDES)}"
+            )
         return override
 
     if (configured_dtype or "").lower() in _LOW_PRECISION_DTYPES:
@@ -208,7 +214,9 @@ def auto_select_device(preferred_device: Optional[str] = "cuda") -> str:
     return "cpu"
 
 
-def resolve_runtime_device(device: Optional[str], configured_device: str = "cuda") -> str:
+def resolve_runtime_device(
+    device: Optional[str], configured_device: str = "cuda"
+) -> str:
     """
     Resolve the actual runtime device.
 
@@ -224,13 +232,15 @@ def resolve_runtime_device(device: Optional[str], configured_device: str = "cuda
     if explicit.startswith("cuda"):
         if not torch.cuda.is_available():
             raise ValueError(
-                f"Requested device '{device}', but CUDA is not available. " "Use device='auto' for automatic fallback."
+                f"Requested device '{device}', but CUDA is not available. "
+                "Use device='auto' for automatic fallback."
             )
         return explicit
     if explicit == "mps":
         if not _has_mps():
             raise ValueError(
-                "Requested device 'mps', but MPS is not available. " "Use device='auto' for automatic fallback."
+                "Requested device 'mps', but MPS is not available. "
+                "Use device='auto' for automatic fallback."
             )
         return "mps"
     if explicit == "cpu":
