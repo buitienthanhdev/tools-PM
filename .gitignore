@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info
+.pytest_cache
+.ipynb_checkpoints
+
+thumbs.db
+.DS_Store
+.idea
+
+# App specific
+logs/
+uploads/
+*.log
+*.wav
+*.mp3
+*.m4a
+*.flac

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Whisper AI — Speech Recognition Studio</title>
+  <meta name="description" content="Professional speech-to-text transcription powered by OpenAI Whisper. Support for 99+ languages, translation, and multiple export formats." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Animated background -->
+<div class="bg-orbs">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<!-- Navigation -->
+<nav class="navbar" id="navbar">
+  <div class="nav-brand">
+    <div class="nav-logo">
+      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="16" cy="16" r="14" fill="url(#grad1)" opacity="0.2"/>
+        <path d="M10 16 C10 12 13 9 16 9 C19 9 22 12 22 16 C22 20 19 23 16 23" stroke="url(#grad1)" stroke-width="2" stroke-linecap="round"/>
+        <path d="M7 16 H10 M22 16 H25" stroke="url(#grad1)" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="16" cy="16" r="3" fill="url(#grad1)"/>
+        <defs>
+          <linearGradient id="grad1" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#a78bfa"/>
+            <stop offset="100%" stop-color="#38bdf8"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+    <span class="nav-title">Whisper <span class="gradient-text">Studio</span></span>
+  </div>
+  <div class="nav-status" id="navStatus">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">Connecting...</span>
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-tab="transcribe" id="tab-transcribe">Transcribe</button>
+    <button class="nav-tab" data-tab="history" id="tab-history">History</button>
+    <button class="nav-tab" data-tab="about" id="tab-about">About</button>
+  </div>
+</nav>
+
+<!-- Main Content -->
+<main class="main">
+
+  <!-- ===== TRANSCRIBE TAB ===== -->
+  <section class="tab-content active" id="page-transcribe">
+    <div class="hero">
+      <h1 class="hero-title">Speech Recognition <br/><span class="gradient-text">Powered by AI</span></h1>
+      <p class="hero-subtitle">Upload audio, choose settings, and get accurate transcription in seconds. Supports 99+ languages and translation.</p>
+    </div>
+
+    <div class="workspace">
+      <!-- LEFT: Upload + Settings -->
+      <div class="panel panel-settings">
+
+        <!-- Upload Area -->
+        <div class="card upload-card" id="uploadCard">
+          <div class="upload-zone" id="uploadZone">
+            <div class="upload-icon">
+              <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M32 8 L32 40" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                <path d="M20 20 L32 8 L44 20" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 44 C12 50 16 56 32 56 C48 56 52 50 52 44" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <p class="upload-title">Drop audio here</p>
+            <p class="upload-sub">or <span class="link-btn" id="browseBtn">browse files</span></p>
+            <p class="upload-formats">MP3 · WAV · M4A · FLAC · OGG · MP4 · WebM</p>
+            <input type="file" id="fileInput" accept=".mp3,.wav,.m4a,.flac,.ogg,.mp4,.mpga,.webm" hidden />
+          </div>
+
+          <!-- File preview -->
+          <div class="file-preview hidden" id="filePreview">
+            <div class="file-info">
+              <div class="file-icon">🎵</div>
+              <div class="file-details">
+                <div class="file-name" id="fileName">audio.mp3</div>
+                <div class="file-size" id="fileSize">0 KB</div>
+              </div>
+              <button class="icon-btn remove-btn" id="removeFile" title="Remove file">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+            <audio class="audio-player" id="audioPlayer" controls></audio>
+          </div>
+        </div>
+
+        <!-- Settings Card -->
+        <div class="card settings-card">
+          <h2 class="card-title">
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18">
+              <path d="M10 3a1 1 0 011 1v1.268a6.003 6.003 0 013.732 3.732H16a1 1 0 010 2h-1.268a6.003 6.003 0 01-3.732 3.732V16a1 1 0 01-2 0v-1.268a6.003 6.003 0 01-3.732-3.732H4a1 1 0 010-2h1.268A6.003 6.003 0 019 5.268V4a1 1 0 011-1z" fill="currentColor" opacity="0.5"/>
+              <circle cx="10" cy="10" r="2" fill="currentColor"/>
+            </svg>
+            Settings
+          </h2>
+
+          <!-- Model Select -->
+          <div class="form-group">
+            <label class="form-label">Model</label>
+            <div class="model-grid" id="modelGrid">
+              <!-- filled by JS -->
+            </div>
+          </div>
+
+          <!-- Language -->
+          <div class="form-group">
+            <label class="form-label" for="langSelect">Language</label>
+            <div class="select-wrap">
+              <select class="form-select" id="langSelect">
+                <!-- filled by JS -->
+              </select>
+            </div>
+          </div>
+
+          <!-- Task -->
+          <div class="form-group">
+            <label class="form-label">Task</label>
+            <div class="radio-group">
+              <label class="radio-btn active" id="radioTranscribe">
+                <input type="radio" name="task" value="transcribe" checked hidden />
+                <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M3 5h14a1 1 0 010 2H3a1 1 0 010-2zm0 4h10a1 1 0 010 2H3a1 1 0 010-2zm0 4h12a1 1 0 010 2H3a1 1 0 010-2z"/></svg>
+                Transcribe
+              </label>
+              <label class="radio-btn" id="radioTranslate">
+                <input type="radio" name="task" value="translate" hidden />
+                <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M7 2a1 1 0 011 1v1h4V2a1 1 0 112 0v1h1a2 2 0 012 2v11a2 2 0 01-2 2H3a2 2 0 01-2-2V5a2 2 0 012-2h1V2a1 1 0 011-1zM3 8v8h14V8H3zm3 2h8a1 1 0 010 2H6a1 1 0 010-2z"/></svg>
+                Translate → EN
+              </label>
+            </div>
+          </div>
+
+          <!-- Advanced options toggle -->
+          <button class="advanced-toggle" id="advancedToggle">
+            <span>Advanced options</span>
+            <svg class="toggle-arrow" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+              <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/>
+            </svg>
+          </button>
+
+          <div class="advanced-panel hidden" id="advancedPanel">
+            <!-- Word Timestamps -->
+            <div class="form-group">
+              <label class="toggle-label">
+                <span class="form-label" style="margin-bottom:0">Word timestamps</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="wordTimestamps" />
+                  <span class="toggle-track"></span>
+                </label>
+              </label>
+              <p class="form-hint">Show timing for each individual word</p>
+            </div>
+
+            <!-- Temperature -->
+            <div class="form-group">
+              <label class="form-label" for="temperatureSlider">Temperature: <span id="tempValue">0.0</span></label>
+              <input type="range" class="range-slider" id="temperatureSlider" min="0" max="1" step="0.1" value="0" />
+              <p class="form-hint">Higher = more creative but less accurate</p>
+            </div>
+          </div>
+
+          <!-- Submit -->
+          <button class="btn btn-primary btn-large" id="transcribeBtn" disabled>
+            <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
+              <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"/>
+            </svg>
+            Start Transcription
+          </button>
+        </div>
+      </div>
+
+      <!-- RIGHT: Result -->
+      <div class="panel panel-result">
+        <!-- Idle state -->
+        <div class="result-idle" id="resultIdle">
+          <div class="idle-illustration">
+            <div class="waveform-idle">
+              <span></span><span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <p class="idle-title">Ready to transcribe</p>
+          <p class="idle-sub">Upload an audio file and configure settings to get started</p>
+        </div>
+
+        <!-- Progress state -->
+        <div class="result-progress hidden" id="resultProgress">
+          <div class="progress-animation">
+            <div class="spinner-ring"></div>
+            <div class="waveform-anim">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <p class="progress-title" id="progressTitle">Processing...</p>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <span class="progress-percent" id="progressPercent">0%</span>
+          </div>
+          <p class="progress-msg" id="progressMsg">Queued...</p>
+        </div>
+
+        <!-- Result state -->
+        <div class="result-content hidden" id="resultContent">
+          <!-- Result Header -->
+          <div class="result-header">
+            <div class="result-badges">
+              <span class="badge badge-success">✓ Completed</span>
+              <span class="badge badge-info" id="resultLang">🌐 English</span>
+              <span class="badge badge-info" id="resultModel">⚡ turbo</span>
+              <span class="badge badge-muted" id="resultDuration">⏱ 0s</span>
+            </div>
+            <div class="result-actions">
+              <button class="btn btn-sm btn-ghost" id="copyBtn">
+                <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"/><path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"/></svg>
+                Copy
+              </button>
+              <div class="dropdown" id="exportDropdown">
+                <button class="btn btn-sm btn-ghost" id="exportBtn">
+                  <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"/></svg>
+                  Export ▾
+                </button>
+                <div class="dropdown-menu hidden" id="exportMenu">
+                  <button class="dropdown-item" data-fmt="txt">📄 Plain Text (.txt)</button>
+                  <button class="dropdown-item" data-fmt="srt">🎬 SRT Subtitles (.srt)</button>
+                  <button class="dropdown-item" data-fmt="vtt">📺 VTT Subtitles (.vtt)</button>
+                  <button class="dropdown-item" data-fmt="tsv">📊 TSV Spreadsheet (.tsv)</button>
+                  <button class="dropdown-item" data-fmt="json">🔧 JSON Data (.json)</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- View tabs -->
+          <div class="view-tabs">
+            <button class="view-tab active" data-view="text" id="viewText">Full Text</button>
+            <button class="view-tab" data-view="segments" id="viewSegments">Segments</button>
+          </div>
+
+          <!-- Full text view -->
+          <div class="text-view" id="textView">
+            <div class="transcript-box" id="transcriptBox"></div>
+          </div>
+
+          <!-- Segments view -->
+          <div class="segments-view hidden" id="segmentsView">
+            <div class="segments-list" id="segmentsList"></div>
+          </div>
+        </div>
+
+        <!-- Error state -->
+        <div class="result-error hidden" id="resultError">
+          <div class="error-icon">⚠️</div>
+          <p class="error-title">Transcription Failed</p>
+          <p class="error-msg" id="errorMsg">An error occurred</p>
+          <button class="btn btn-sm btn-ghost" id="retryBtn">Try Again</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== HISTORY TAB ===== -->
+  <section class="tab-content hidden" id="page-history">
+    <div class="page-header">
+      <h2 class="page-title">Transcription History</h2>
+      <button class="btn btn-sm btn-ghost" id="refreshHistory">
+        <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"/></svg>
+        Refresh
+      </button>
+    </div>
+
+    <div class="history-list" id="historyList">
+      <div class="empty-state">
+        <p class="empty-icon">📋</p>
+        <p>No transcriptions yet</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== ABOUT TAB ===== -->
+  <section class="tab-content hidden" id="page-about">
+    <div class="about-grid">
+      <div class="card about-hero">
+        <div class="about-logo">
+          <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" width="80" height="80">
+            <circle cx="40" cy="40" r="36" fill="url(#ag1)" opacity="0.15"/>
+            <path d="M24 40 C24 30 31 22 40 22 C49 22 56 30 56 40 C56 50 49 58 40 58" stroke="url(#ag1)" stroke-width="3" stroke-linecap="round"/>
+            <path d="M17 40 H24 M56 40 H63" stroke="url(#ag1)" stroke-width="3" stroke-linecap="round"/>
+            <circle cx="40" cy="40" r="8" fill="url(#ag1)" opacity="0.6"/>
+            <circle cx="40" cy="40" r="4" fill="url(#ag1)"/>
+            <defs>
+              <linearGradient id="ag1" x1="0" y1="0" x2="80" y2="80">
+                <stop offset="0%" stop-color="#a78bfa"/>
+                <stop offset="100%" stop-color="#38bdf8"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h2 class="gradient-text" style="font-size:2rem;font-weight:800;margin:0.5rem 0">OpenAI Whisper</h2>
+        <p class="about-desc">A general-purpose speech recognition model trained on 680,000 hours of multilingual supervised data. Supports transcription in 99+ languages and translation to English.</p>
+        <div class="about-stats">
+          <div class="stat-item"><span class="stat-num">99+</span><span class="stat-lbl">Languages</span></div>
+          <div class="stat-item"><span class="stat-num">680K</span><span class="stat-lbl">Hours trained</span></div>
+          <div class="stat-item"><span class="stat-num">6</span><span class="stat-lbl">Model sizes</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">System Status</h3>
+        <div class="status-grid" id="statusGrid">
+          <div class="status-row"><span>Backend</span><span class="badge badge-muted" id="sysBackend">–</span></div>
+          <div class="status-row"><span>Whisper</span><span class="badge badge-muted" id="sysWhisper">–</span></div>
+          <div class="status-row"><span>PyTorch</span><span class="badge badge-muted" id="sysTorch">–</span></div>
+          <div class="status-row"><span>Device</span><span class="badge badge-muted" id="sysDevice">–</span></div>
+          <div class="status-row"><span>CUDA</span><span class="badge badge-muted" id="sysCuda">–</span></div>
+          <div class="status-row"><span>Loaded Models</span><span class="badge badge-muted" id="sysModels">–</span></div>
+        </div>
+        <button class="btn btn-sm btn-ghost" id="refreshStatus" style="margin-top:1rem">Refresh Status</button>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">Model Reference</h3>
+        <div class="table-wrap">
+          <table class="ref-table">
+            <thead><tr><th>Model</th><th>Params</th><th>VRAM</th><th>Speed</th></tr></thead>
+            <tbody>
+              <tr><td>tiny</td><td>39M</td><td>~1 GB</td><td>~10x</td></tr>
+              <tr><td>base</td><td>74M</td><td>~1 GB</td><td>~7x</td></tr>
+              <tr><td>small</td><td>244M</td><td>~2 GB</td><td>~4x</td></tr>
+              <tr><td>medium</td><td>769M</td><td>~5 GB</td><td>~2x</td></tr>
+              <tr><td>large</td><td>1550M</td><td>~10 GB</td><td>1x</td></tr>
+              <tr class="highlight"><td>turbo ⭐</td><td>809M</td><td>~6 GB</td><td>~8x</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Toast Notifications -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

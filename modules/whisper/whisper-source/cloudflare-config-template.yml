@@ -1,0 +1,10 @@
+tunnel: REPLACE_WITH_YOUR_TUNNEL_ID
+credentials-file: C:\Users\TIEN THANH\.cloudflared\REPLACE_WITH_YOUR_TUNNEL_ID.json
+
+ingress:
+  - hostname: sonxit.io.vn
+    service: http://localhost:5000
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: false
+  - service: http_status:404

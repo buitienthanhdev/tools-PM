@@ -1,0 +1,102 @@
+/* ============================================================
+   Enterprise AI Dashboard Platform — Theme & Design Tokens
+   Vercel / Linear / Supabase / Cursor Dark Mode Aesthetic
+   ============================================================ */
+
+:root {
+  /* Color Palette - Dark Slate & Deep Space */
+  --bg-app: #090d16;
+  --bg-sidebar: #0b111e;
+  --bg-header: rgba(11, 17, 30, 0.85);
+  --bg-card: #111827;
+  --bg-card-hover: #162032;
+  --bg-input: #0b1220;
+  --bg-glass: rgba(17, 24, 39, 0.7);
+  --bg-active: rgba(16, 185, 129, 0.12);
+
+  /* Borders & Dividers */
+  --border-color: #1e293b;
+  --border-focus: #334155;
+  --border-accent: rgba(16, 185, 129, 0.35);
+
+  /* Brand Accents - Emerald & Cyan Neon Glow */
+  --primary: #10b981;
+  --primary-hover: #059669;
+  --primary-light: rgba(16, 185, 129, 0.15);
+  --primary-glow: 0 0 20px rgba(16, 185, 129, 0.35);
+  
+  --secondary: #06b6d4;
+  --secondary-light: rgba(6, 182, 212, 0.15);
+  
+  --purple: #8b5cf6;
+  --amber: #f59e0b;
+  --rose: #f43f5e;
+
+  /* Typography Colors */
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --text-inverse: #090d16;
+
+  /* Radius & Spacing */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Typography Fonts */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Shadows & Elevations */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 14px -2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px -4px rgba(0, 0, 0, 0.65);
+  --shadow-glow: 0 0 25px -5px rgba(16, 185, 129, 0.25);
+
+  /* Transitions */
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Light Theme Overrides (if toggled) */
+[data-theme="light"] {
+  --bg-app: #f8fafc;
+  --bg-sidebar: #ffffff;
+  --bg-header: rgba(255, 255, 255, 0.88);
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f5f9;
+  --bg-input: #f1f5f9;
+  --bg-glass: rgba(255, 255, 255, 0.8);
+  --bg-active: rgba(16, 185, 129, 0.1);
+
+  --border-color: #e2e8f0;
+  --border-focus: #cbd5e1;
+  --border-accent: rgba(16, 185, 129, 0.4);
+
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --text-dim: #94a3b8;
+  --text-inverse: #ffffff;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}

@@ -1,0 +1,9 @@
+﻿tunnel: f8c3bf93-35c2-43ae-86ce-8ad5f4ac25ce
+credentials-file: C:\Users\TIEN THANH\.cloudflared\f8c3bf93-35c2-43ae-86ce-8ad5f4ac25ce.json
+
+ingress:
+  - hostname: sonxit.io.vn
+    service: http://localhost:5000
+    originRequest:
+      connectTimeout: 30s
+  - service: http_status:404

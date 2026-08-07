@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>PM Tools Hub — AI Workspace Platform</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/webp" href="/assets/logo.webp" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..900;1,14..32,300..900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/styles/theme.css" />
+  <link rel="stylesheet" href="/styles/layout.css" />
+  <link rel="stylesheet" href="/styles/components.css" />
+</head>
+<body>
+  <div class="app-container">
+    <div id="sidebarMount"></div>
+    <div class="main-wrapper">
+      <div id="topNavMount"></div>
+      <div id="workspaceMount" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>
+    </div>
+  </div>
+
+  <!-- Single module entry — static imports share singletons correctly -->
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
