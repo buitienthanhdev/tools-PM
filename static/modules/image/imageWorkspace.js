@@ -130,15 +130,22 @@ class ImageWorkspace {
     this.jobSession = 0;
     this.destroyed = false;
     this.downloadUrls = new Set();
+    this.aiModels = null;
+    this.aiModelDownloads = new Set();
+    this.aiToolBusy = false;
+    this.maskDrawing = false;
+    this.maskHasContent = false;
+    this.maskPointerId = null;
     this.render();
     this.bindEvents();
+    this.refreshAiModels();
   }
 
   render() {
     this.container.innerHTML = `
       ${pageHero(this.module, {
         title: 'Image <span class="thin">Workspace</span>',
-        sub: 'Chỉnh ảnh ngay trong trình duyệt. Ảnh chỉ được gửi đến máy chủ khi bạn chủ động bật đồng ý và chạy Real-ESRGAN.',
+        sub: 'Chỉnh ảnh cục bộ hoặc chạy các AI engine ONNX của NextGenUp trên máy chủ sau khi đồng ý gửi ảnh.',
         word: 'Image',
         meta: ['Chỉnh sửa cục bộ', 'PNG · JPG · WebP', 'Undo · Redo'],
       })}
@@ -162,6 +169,7 @@ class ImageWorkspace {
             <button type="button" class="iw-nav-button" data-scroll="iw-adjust">Điều chỉnh</button>
             <button type="button" class="iw-nav-button" data-scroll="iw-export">Xuất ảnh</button>
             <button type="button" class="iw-nav-button" data-scroll="iw-ai">AI upscale</button>
+            <button type="button" class="iw-nav-button" data-scroll="iw-nextgen">AI ảnh</button>
             <div class="iw-privacy-note">Ảnh được giữ trong trình duyệt cho đến khi bạn tự chạy công cụ AI trên máy chủ.</div>
           </aside>
 
@@ -173,6 +181,7 @@ class ImageWorkspace {
                 <button class="btn btn-primary" type="button" data-action="open">Chọn ảnh</button>
               </div>
               <canvas class="iw-preview" aria-label="Ảnh đã chỉnh sửa" hidden></canvas>
+              <canvas class="iw-mask-canvas" aria-label="Mặt nạ xóa vật thể" hidden></canvas>
               <img class="iw-before" alt="Ảnh gốc" hidden>
               <div class="iw-empty-error" role="alert" hidden></div>
             </div>
@@ -186,6 +195,15 @@ class ImageWorkspace {
               <div><strong>Kết quả Real-ESRGAN</strong><span data-ai-dimensions></span></div>
               <img alt="Ảnh sau khi được AI nâng cấp" data-ai-preview>
               <a class="btn btn-primary btn-sm" data-ai-download>Tải ảnh AI</a>
+            </div>
+            <div class="iw-ai-progress" data-tools-progress hidden>
+              <progress max="100" value="0" data-tools-progress-bar></progress>
+              <span data-tools-message></span>
+            </div>
+            <div class="iw-ai-result" data-tools-result hidden>
+              <div><strong data-tools-result-title>Kết quả AI</strong><span data-tools-result-dimensions></span></div>
+              <img alt="Ảnh sau xử lý AI" data-tools-result-preview>
+              <a class="btn btn-primary btn-sm" data-tools-result-download>Tải ảnh kết quả</a>
             </div>
           </main>
 
@@ -274,11 +292,85 @@ class ImageWorkspace {
                   <option value="fast">Nhanh</option>
                 </select>
               </label>
-              <label class="iw-consent"><input type="checkbox" data-ai="consent" disabled> Tôi đồng ý gửi ảnh đã chỉnh sửa đến máy chủ PM Tools để xử lý AI.</label>
+              <label class="iw-consent"><input type="checkbox" data-ai="consent" disabled> Tôi đồng ý gửi ảnh đã chỉnh sửa đến máy chủ PM Tools để xử lý AI. Ảnh được lưu tạm tối đa 24 giờ.</label>
               <button class="btn btn-primary btn-sm" type="button" data-action="ai" disabled>Chạy Real-ESRGAN</button>
               <div class="iw-ai-progress" data-ai-progress hidden>
                 <progress max="100" value="0" data-ai-progress-bar></progress>
                 <span data-ai-message></span>
+              </div>
+            </section>
+
+            <section class="iw-tool-section" id="iw-nextgen">
+              <h2>AI ảnh · NextGenUp</h2>
+              <p>Engine ONNX chạy trên CPU của máy chủ. Hãy tải model riêng cho công cụ cần dùng; ảnh chỉ được gửi sau khi bạn đồng ý.</p>
+              <div class="iw-model-runtime" data-ai-runtime role="status">Đang kiểm tra ONNX Runtime…</div>
+              <label class="iw-field">Nền sau khi tách
+                <select data-ai-background>
+                  <option value="transparent">Trong suốt (PNG)</option>
+                  <option value="custom">Màu tùy chọn</option>
+                </select>
+              </label>
+              <label class="iw-field iw-background-color" data-background-color hidden>Màu nền
+                <input type="color" value="#ffffff" data-ai-background-color>
+              </label>
+              <div class="iw-ai-tools">
+                <article class="iw-ai-tool-card" data-tool-card="background">
+                  <strong>Tách nền · BiRefNet</strong>
+                  <span data-model-status="bg">Đang kiểm tra model…</span>
+                  <progress max="100" value="0" data-model-progress="bg" hidden></progress>
+                  <button class="btn btn-secondary btn-sm" type="button" data-action="download-model" data-model="bg">Tải model · 224 MB</button>
+                  <button class="btn btn-primary btn-sm" type="button" data-action="ai-tool" data-tool="background" disabled>Tách nền</button>
+                </article>
+                <article class="iw-ai-tool-card" data-tool-card="denoise">
+                  <strong>Khử nhiễu · SCUNet</strong>
+                  <span data-model-status="denoise">Đang kiểm tra model…</span>
+                  <progress max="100" value="0" data-model-progress="denoise" hidden></progress>
+                  <button class="btn btn-secondary btn-sm" type="button" data-action="download-model" data-model="denoise">Tải model · 77 MB</button>
+                  <button class="btn btn-primary btn-sm" type="button" data-action="ai-tool" data-tool="denoise" disabled>Khử nhiễu</button>
+                </article>
+                <article class="iw-ai-tool-card" data-tool-card="deblur">
+                  <strong>Khử mờ · NAFNet</strong>
+                  <span data-model-status="deblur">Đang kiểm tra model…</span>
+                  <progress max="100" value="0" data-model-progress="deblur" hidden></progress>
+                  <button class="btn btn-secondary btn-sm" type="button" data-action="download-model" data-model="deblur">Tải model · 92 MB</button>
+                  <button class="btn btn-primary btn-sm" type="button" data-action="ai-tool" data-tool="deblur" disabled>Khử mờ</button>
+                </article>
+                <article class="iw-ai-tool-card" data-tool-card="colorize">
+                  <strong>Tô màu ảnh cũ · DDColor</strong>
+                  <span data-model-status="colorize">Đang kiểm tra model…</span>
+                  <progress max="100" value="0" data-model-progress="colorize" hidden></progress>
+                  <button class="btn btn-secondary btn-sm" type="button" data-action="download-model" data-model="colorize">Tải model · 136 MB</button>
+                  <button class="btn btn-primary btn-sm" type="button" data-action="ai-tool" data-tool="colorize" disabled>Tô màu</button>
+                </article>
+                <article class="iw-ai-tool-card" data-tool-card="erase">
+                  <strong>Xóa vật thể · LaMa</strong>
+                  <span data-model-status="erase">Đang kiểm tra model…</span>
+                  <progress max="100" value="0" data-model-progress="erase" hidden></progress>
+                  <button class="btn btn-secondary btn-sm" type="button" data-action="download-model" data-model="erase">Tải model · 209 MB</button>
+                  <label class="iw-range">Cỡ cọ <output data-value="brush">28 px</output>
+                    <input type="range" min="8" max="80" value="28" data-ai-brush disabled>
+                  </label>
+                  <div class="iw-button-grid">
+                    <button class="btn btn-secondary btn-sm" type="button" data-action="mask" disabled>Vẽ vùng xóa</button>
+                    <button class="btn btn-secondary btn-sm" type="button" data-action="clear-mask" disabled>Xóa mask</button>
+                  </div>
+                  <button class="btn btn-primary btn-sm" type="button" data-action="ai-tool" data-tool="erase" disabled>Xóa vật thể</button>
+                </article>
+                <article class="iw-ai-tool-card" data-tool-card="face_restore">
+                  <strong>Phục hồi khuôn mặt · GFPGAN</strong>
+                  <span data-model-status="face">Đang kiểm tra model…</span>
+                  <progress max="100" value="0" data-model-progress="face" hidden></progress>
+                  <button class="btn btn-secondary btn-sm" type="button" data-action="download-model" data-model="face">Tải model · 341 MB</button>
+                  <button class="btn btn-primary btn-sm" type="button" data-action="ai-tool" data-tool="face_restore" disabled>Phục hồi mặt</button>
+                </article>
+                <article class="iw-ai-tool-card" data-tool-card="enhance">
+                  <strong>Tăng chi tiết cùng kích thước · Real-ESRGAN</strong>
+                  <span data-model-status="enhance">Đang kiểm tra model…</span>
+                  <span>Giới hạn ảnh đầu vào 8 megapixel để kiểm soát bộ nhớ.</span>
+                  <progress max="100" value="0" data-model-progress="enhance" hidden></progress>
+                  <button class="btn btn-secondary btn-sm" type="button" data-action="download-model" data-model="enhance">Tải model · 5 MB</button>
+                  <button class="btn btn-primary btn-sm" type="button" data-action="ai-tool" data-tool="enhance" disabled>Tăng chi tiết</button>
+                </article>
               </div>
             </section>
           </aside>
@@ -291,6 +383,7 @@ class ImageWorkspace {
     this.root = this.container.querySelector('.iw-workspace');
     this.fileInput = this.container.querySelector('.iw-file-input');
     this.canvas = this.container.querySelector('.iw-preview');
+    this.maskCanvas = this.container.querySelector('.iw-mask-canvas');
     this.before = this.container.querySelector('.iw-before');
     this.empty = this.container.querySelector('.iw-empty');
     this.error = this.container.querySelector('.iw-empty-error');
@@ -298,6 +391,7 @@ class ImageWorkspace {
     this.stage = this.container.querySelector('.iw-stage');
     this.compareRow = this.container.querySelector('.iw-compare-row');
     this.aiResult = this.container.querySelector('.iw-ai-result');
+    this.maskContext = this.maskCanvas.getContext('2d', { willReadFrequently: true });
 
     this.root.addEventListener('click', (event) => this.handleClick(event));
     this.root.addEventListener('change', (event) => this.handleChange(event));
@@ -329,6 +423,10 @@ class ImageWorkspace {
         this.loadFile(file);
       }
     });
+    this.maskCanvas.addEventListener('pointerdown', (event) => this.beginMaskStroke(event));
+    this.maskCanvas.addEventListener('pointermove', (event) => this.continueMaskStroke(event));
+    this.maskCanvas.addEventListener('pointerup', (event) => this.endMaskStroke(event));
+    this.maskCanvas.addEventListener('pointercancel', (event) => this.endMaskStroke(event));
   }
 
   handleClick(event) {
@@ -346,6 +444,10 @@ class ImageWorkspace {
       else if (action === 'flip-y') this.applyAction((state) => { state.flipY = !state.flipY; });
       else if (action === 'export') this.exportImage();
       else if (action === 'ai') this.runAiUpscale();
+      else if (action === 'download-model') this.downloadAiModel(actionButton.dataset.model);
+      else if (action === 'ai-tool') this.runAiTool(actionButton.dataset.tool);
+      else if (action === 'mask') this.toggleMaskDrawing();
+      else if (action === 'clear-mask') this.clearMask();
       return;
     }
 
@@ -402,6 +504,11 @@ class ImageWorkspace {
 
     if (input.dataset.ai === 'consent') {
       this.updateControls();
+      return;
+    }
+
+    if (input.matches('[data-ai-background]')) {
+      this.root.querySelector('[data-background-color]').hidden = input.value !== 'custom';
     }
   }
 
@@ -419,6 +526,8 @@ class ImageWorkspace {
       this.updateCompare(input.value);
     } else if (input.dataset.export === 'quality') {
       this.updateValueLabel('quality', `${input.value}%`);
+    } else if (input.matches('[data-ai-brush]')) {
+      this.updateValueLabel('brush', `${input.value} px`);
     }
   }
 
@@ -486,6 +595,7 @@ class ImageWorkspace {
       return;
     }
     this.invalidateAiSession();
+    this.aiToolBusy = false;
     if (this.bitmap) this.bitmap.close();
     if (this.originalUrl) URL.revokeObjectURL(this.originalUrl);
     this.bitmap = bitmap;
@@ -494,6 +604,10 @@ class ImageWorkspace {
     this.before.src = this.originalUrl;
     this.before.hidden = true;
     this.aiResult.hidden = true;
+    this.root.querySelector('[data-tools-result]').hidden = true;
+    this.root.querySelector('[data-tools-result-preview]').removeAttribute('src');
+    this.root.querySelector('[data-tools-result-download]').removeAttribute('href');
+    this.root.querySelector('[data-tools-progress]').hidden = true;
     this.root.querySelector('[data-ai="consent"]').checked = false;
     this.root.querySelector('[data-ai-progress]').hidden = true;
     this.compareRow.hidden = true;
@@ -506,6 +620,10 @@ class ImageWorkspace {
     this.undoStack = [];
     this.redoStack = [];
     this.rangeStart = null;
+    this.maskDrawing = false;
+    this.maskHasContent = false;
+    this.maskCanvas.hidden = true;
+    this.maskCanvas.classList.remove('iw-mask-drawing');
     this.empty.hidden = true;
     this.canvas.hidden = false;
     this.updateControls();
@@ -519,6 +637,7 @@ class ImageWorkspace {
     const before = cloneState(this.state);
     action(this.state);
     if (stateKey(before) === stateKey(this.state)) return;
+    if (this.geometryKey(before) !== this.geometryKey(this.state)) this.clearMask(false);
     this.undoStack.push(before);
     this.redoStack = [];
     this.syncInputs();
@@ -545,7 +664,9 @@ class ImageWorkspace {
   undo() {
     if (!this.undoStack.length) return;
     this.redoStack.push(cloneState(this.state));
-    this.state = this.undoStack.pop();
+    const previous = this.undoStack.pop();
+    if (this.geometryKey(this.state) !== this.geometryKey(previous)) this.clearMask(false);
+    this.state = previous;
     this.syncInputs();
     this.schedulePreview();
     this.updateControls();
@@ -555,7 +676,9 @@ class ImageWorkspace {
   redo() {
     if (!this.redoStack.length) return;
     this.undoStack.push(cloneState(this.state));
-    this.state = this.redoStack.pop();
+    const next = this.redoStack.pop();
+    if (this.geometryKey(this.state) !== this.geometryKey(next)) this.clearMask(false);
+    this.state = next;
     this.syncInputs();
     this.schedulePreview();
     this.updateControls();
@@ -573,12 +696,17 @@ class ImageWorkspace {
       const input = this.root.querySelector(`[data-crop="${key}"]`);
       if (input) input.value = value;
     }
+
     for (const [key, value] of Object.entries(this.state.filters)) {
       const input = this.root.querySelector(`[data-setting="${key}"]`);
       if (input) input.value = value;
       const label = key === 'hue' ? `${value}°` : key === 'blur' ? `${value} px` : `${value}%`;
       this.updateValueLabel(key, label);
     }
+  }
+
+  geometryKey(state) {
+    return JSON.stringify([state.crop, state.rotation, state.flipX, state.flipY]);
   }
 
   schedulePreview() {
@@ -608,6 +736,13 @@ class ImageWorkspace {
     }
     context.clearRect(0, 0, this.canvas.width, this.canvas.height);
     context.drawImage(preview, 0, 0);
+    if (this.maskCanvas.width !== preview.width || this.maskCanvas.height !== preview.height) {
+      this.maskCanvas.width = preview.width;
+      this.maskCanvas.height = preview.height;
+      this.maskContext.fillStyle = '#000';
+      this.maskContext.fillRect(0, 0, preview.width, preview.height);
+      this.maskHasContent = false;
+    }
     preview.width = 0;
     preview.height = 0;
     this.stage.style.aspectRatio = `${raw.width} / ${raw.height}`;
@@ -687,6 +822,7 @@ class ImageWorkspace {
 
   async runAiUpscale() {
     if (!this.bitmap || !this.root.querySelector('[data-ai="consent"]').checked) return;
+    if (this.aiToolBusy) return;
     const button = this.root.querySelector('[data-action="ai"]');
     const progress = this.root.querySelector('[data-ai-progress]');
     const progressBar = this.root.querySelector('[data-ai-progress-bar]');
@@ -694,6 +830,8 @@ class ImageWorkspace {
     const session = ++this.jobSession;
     const controller = new AbortController();
     this.aiController = controller;
+    this.aiToolBusy = true;
+    this.updateAiModelControls();
     button.disabled = true;
     progress.hidden = false;
     progressBar.value = 0;
@@ -752,7 +890,7 @@ class ImageWorkspace {
         canvas.height = 0;
       }
       if (session === this.jobSession) {
-        button.disabled = !this.bitmap || !this.root.querySelector('[data-ai="consent"]').checked;
+        this.aiToolBusy = false;
         if (!this.destroyed) this.updateControls();
       }
     }
@@ -787,6 +925,265 @@ class ImageWorkspace {
     this.root.querySelector('[data-output-size]').textContent = `${size.width} × ${size.height} px`;
   }
 
+  async refreshAiModels() {
+    const runtime = this.root.querySelector('[data-ai-runtime]');
+    try {
+      this.aiModels = await this.apiJson('/api/image/ai/models');
+      if (this.destroyed) return;
+      runtime.textContent = this.aiModels.runtime_available
+        ? `ONNX Runtime ${this.aiModels.runtime_version} · xử lý trên CPU · model chỉ tải khi bạn bấm.`
+        : 'Máy chủ chưa cài ONNX Runtime; công cụ AI chưa sẵn sàng.';
+    } catch (error) {
+      if (this.destroyed) return;
+      runtime.textContent = `Không kiểm tra được model AI: ${error.message}`;
+    }
+    this.updateAiModelControls();
+  }
+
+  updateAiModelControls() {
+    const models = this.aiModels?.models || {};
+    const runtimeAvailable = Boolean(this.aiModels?.runtime_available);
+    const toolModels = {
+      background: 'bg',
+      denoise: 'denoise',
+      deblur: 'deblur',
+      colorize: 'colorize',
+      erase: 'erase',
+      face_restore: 'face',
+      enhance: 'enhance',
+    };
+    for (const [key, model] of Object.entries(models)) {
+      const status = this.root.querySelector(`[data-model-status="${key}"]`);
+      const download = this.root.querySelector(`[data-model="${key}"]`);
+      const progress = this.root.querySelector(`[data-model-progress="${key}"]`);
+      if (status) {
+        const size = `${Math.ceil(model.size / (1024 * 1024))} MB`;
+        if (model.available) status.textContent = `Sẵn sàng · ${size} · ${model.license}`;
+        else if (model.status === 'downloading') status.textContent = `Đang tải ${size} · ${model.progress}%`;
+        else if (model.status === 'error') status.textContent = `Tải model lỗi: ${model.error || 'lỗi mạng hoặc checksum'}`;
+        else status.textContent = `Chưa tải · ${size} · ${model.license}`;
+      }
+      if (download) {
+        download.disabled = !runtimeAvailable || model.available
+          || model.status === 'downloading' || this.aiModelDownloads.has(key);
+      }
+      if (progress) {
+        progress.hidden = model.status !== 'downloading' && !this.aiModelDownloads.has(key);
+        progress.value = Math.max(0, Math.min(100, Number(model.progress) || 0));
+      }
+    }
+
+    const hasImage = Boolean(this.bitmap);
+    const consent = Boolean(this.root.querySelector('[data-ai="consent"]').checked);
+    for (const [tool, modelKey] of Object.entries(toolModels)) {
+      const button = this.root.querySelector(`[data-tool="${tool}"]`);
+      const ready = runtimeAvailable && Boolean(models[modelKey]?.available);
+      if (button) button.disabled = !hasImage || !consent || !ready || this.aiToolBusy
+        || (tool === 'erase' && !this.maskHasContent);
+    }
+    const eraseReady = hasImage && runtimeAvailable && Boolean(models.erase?.available) && !this.aiToolBusy;
+    this.root.querySelector('[data-ai-brush]').disabled = !eraseReady;
+    this.root.querySelector('[data-action="mask"]').disabled = !eraseReady;
+    this.root.querySelector('[data-action="clear-mask"]').disabled = !eraseReady || !this.maskHasContent;
+  }
+
+  async downloadAiModel(key) {
+    if (!key || this.aiModelDownloads.has(key)) return;
+    if (!this.aiModels?.runtime_available) {
+      this.showError('Máy chủ chưa sẵn sàng ONNX Runtime để tải model.');
+      return;
+    }
+    this.aiModelDownloads.add(key);
+    this.updateAiModelControls();
+    try {
+      await this.apiJson(`/api/image/ai/models/${encodeURIComponent(key)}`, { method: 'POST' });
+      const deadline = Date.now() + 60 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await delay(1200);
+        const data = await this.apiJson('/api/image/ai/models');
+        if (this.destroyed) return;
+        this.aiModels = data;
+        const model = data.models[key];
+        if (model.available) break;
+        if (model.status === 'error') throw new Error(model.error || 'Model tải hoặc kiểm tra SHA-256 thất bại.');
+        this.updateAiModelControls();
+      }
+      if (!this.aiModels?.models[key]?.available) {
+        throw new Error('Tải model quá thời hạn 60 phút.');
+      }
+      this.setStatus(`${this.aiModels.models[key].label} đã sẵn sàng trên máy chủ.`);
+    } catch (error) {
+      this.showError(`Không tải được model AI: ${error.message}`);
+    } finally {
+      this.aiModelDownloads.delete(key);
+      if (!this.destroyed) this.updateAiModelControls();
+    }
+  }
+
+  toggleMaskDrawing() {
+    if (!this.bitmap) return;
+    this.maskDrawing = !this.maskDrawing;
+    this.maskCanvas.hidden = !this.maskDrawing && !this.maskHasContent;
+    this.maskCanvas.classList.toggle('iw-mask-drawing', this.maskDrawing);
+    const button = this.root.querySelector('[data-action="mask"]');
+    button.textContent = this.maskDrawing ? 'Hoàn tất vùng xóa' : 'Vẽ vùng xóa';
+    button.setAttribute('aria-pressed', String(this.maskDrawing));
+    this.setStatus(this.maskDrawing
+      ? 'Tô trắng lên vùng cần xóa; kéo để vẽ, sau đó bấm Hoàn tất vùng xóa.'
+      : 'Đã giữ mask để xóa vật thể.');
+  }
+
+  beginMaskStroke(event) {
+    if (!this.maskDrawing) return;
+    event.preventDefault();
+    this.maskPointerId = event.pointerId;
+    this.maskCanvas.setPointerCapture(event.pointerId);
+    const rect = this.maskCanvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * this.maskCanvas.width / rect.width;
+    const y = (event.clientY - rect.top) * this.maskCanvas.height / rect.height;
+    const brush = Number(this.root.querySelector('[data-ai-brush]').value);
+    this.maskContext.beginPath();
+    this.maskContext.moveTo(x, y);
+    this.maskContext.lineTo(x + 0.01, y + 0.01);
+    this.maskContext.lineCap = 'round';
+    this.maskContext.lineJoin = 'round';
+    this.maskContext.strokeStyle = '#fff';
+    this.maskContext.lineWidth = brush * this.maskCanvas.width / rect.width;
+    this.maskContext.stroke();
+    this.maskHasContent = true;
+    this.updateAiModelControls();
+  }
+
+  continueMaskStroke(event) {
+    if (!this.maskDrawing || event.pointerId !== this.maskPointerId) return;
+    const rect = this.maskCanvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * this.maskCanvas.width / rect.width;
+    const y = (event.clientY - rect.top) * this.maskCanvas.height / rect.height;
+    this.maskContext.lineTo(x, y);
+    this.maskContext.stroke();
+  }
+
+  endMaskStroke(event) {
+    if (event.pointerId !== this.maskPointerId) return;
+    if (this.maskCanvas.hasPointerCapture(event.pointerId)) {
+      this.maskCanvas.releasePointerCapture(event.pointerId);
+    }
+    this.maskPointerId = null;
+    this.updateAiModelControls();
+  }
+
+  clearMask(announce = true) {
+    if (!this.maskCanvas || !this.maskContext) return;
+    this.maskContext.fillStyle = '#000';
+    this.maskContext.fillRect(0, 0, this.maskCanvas.width, this.maskCanvas.height);
+    this.maskHasContent = false;
+    this.maskDrawing = false;
+    this.maskCanvas.hidden = true;
+    this.maskCanvas.classList.remove('iw-mask-drawing');
+    this.root.querySelector('[data-action="mask"]').textContent = 'Vẽ vùng xóa';
+    this.root.querySelector('[data-action="mask"]').setAttribute('aria-pressed', 'false');
+    if (announce) this.setStatus('Đã xóa vùng mask.');
+    this.updateAiModelControls();
+  }
+
+  async runAiTool(tool) {
+    if (!this.bitmap || !this.root.querySelector('[data-ai="consent"]').checked) return;
+    if (tool === 'erase' && !this.maskHasContent) {
+      this.showError('Hãy vẽ mask trắng lên vùng cần xóa trước.');
+      return;
+    }
+    if (this.aiToolBusy) return;
+
+    const session = ++this.jobSession;
+    const controller = new AbortController();
+    this.aiController = controller;
+    this.aiToolBusy = true;
+    this.root.querySelector('[data-tools-result]').hidden = true;
+    this.root.querySelector('[data-tools-progress]').hidden = false;
+    this.root.querySelector('[data-tools-progress-bar]').value = 0;
+    this.setStatus('Đang chuẩn bị ảnh đã chỉnh sửa để gửi đến máy chủ theo yêu cầu…');
+    this.updateAiModelControls();
+
+    let canvas;
+    try {
+      canvas = drawImage(this.bitmap, this.state);
+      const blob = await canvasBlob(canvas, 'image/png', 1);
+      if (blob.size > MAX_FILE_BYTES) throw new Error('Ảnh sau chỉnh sửa vượt quá giới hạn tải lên 50 MB.');
+      const form = new FormData();
+      form.append('image', new File([blob], 'edited-image.png', { type: 'image/png' }));
+      const uploaded = await this.apiJson('/api/image/upload', {
+        method: 'POST',
+        body: form,
+        signal: controller.signal,
+      });
+      this.assertCurrentSession(session);
+
+      const toolForm = new FormData();
+      toolForm.append('job_id', uploaded.job_id);
+      if (tool === 'background') {
+        const selected = this.root.querySelector('[data-ai-background]').value;
+        toolForm.append('background', selected === 'custom'
+          ? this.root.querySelector('[data-ai-background-color]').value
+          : selected);
+      }
+      if (tool === 'erase') {
+        const maskBlob = await canvasBlob(this.maskCanvas, 'image/png', 1);
+        toolForm.append('mask', new File([maskBlob], 'mask.png', { type: 'image/png' }));
+      }
+      const started = await this.apiJson(`/api/image/ai/${encodeURIComponent(tool)}`, {
+        method: 'POST',
+        body: toolForm,
+        signal: controller.signal,
+      });
+      this.setStatus('Ảnh đã được gửi theo yêu cầu. Đang xử lý AI trên máy chủ…');
+      const deadline = Date.now() + 60 * 60 * 1000;
+      let job;
+      while (Date.now() < deadline) {
+        await delay(1200);
+        this.assertCurrentSession(session);
+        job = await this.apiJson(`/api/job/${encodeURIComponent(started.job_id)}`, {
+          signal: controller.signal,
+        });
+        this.root.querySelector('[data-tools-progress-bar]').value = Math.max(
+          0, Math.min(100, Number(job.progress) || 0),
+        );
+        this.root.querySelector('[data-tools-message]').textContent = job.message || 'Đang xử lý…';
+        if (job.status === 'completed') break;
+        if (job.status === 'failed') throw new Error(job.message || 'AI không xử lý được ảnh.');
+      }
+      if (!job || job.status !== 'completed') throw new Error('Tác vụ vượt quá 60 phút.');
+      this.assertCurrentSession(session);
+      const result = job.result;
+      const image = this.root.querySelector('[data-tools-result-preview]');
+      image.src = result.enhanced_path;
+      const title = this.root.querySelector('[data-tools-result-title]');
+      title.textContent = result.engine;
+      this.root.querySelector('[data-tools-result-dimensions]').textContent =
+        `${result.width} × ${result.height} · ${result.format}`;
+      const download = this.root.querySelector('[data-tools-result-download]');
+      download.href = `${result.enhanced_path}?download=1`;
+      download.download = `${tool}_${result.width}x${result.height}.png`;
+      this.root.querySelector('[data-tools-result]').hidden = false;
+      this.root.querySelector('[data-tools-progress]').hidden = true;
+      this.setStatus(`${result.engine} hoàn tất: ${result.width} × ${result.height}.`);
+      if (tool === 'erase') this.clearMask(false);
+    } catch (error) {
+      if (error.name !== 'AbortError' && session === this.jobSession) {
+        this.showError(`${tool} thất bại: ${error.message}`);
+        this.root.querySelector('[data-tools-progress]').hidden = true;
+      }
+    } finally {
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+      if (session === this.jobSession) {
+        this.aiToolBusy = false;
+        if (!this.destroyed) this.updateControls();
+      }
+    }
+  }
+
   updateValueLabel(key, value) {
     const output = this.root.querySelector(`[data-value="${key}"]`);
     if (output) output.value = value;
@@ -803,7 +1200,9 @@ class ImageWorkspace {
     this.root.querySelector('[data-action="export"]').disabled = !hasImage;
     this.root.querySelector('[data-ai="consent"]').disabled = !hasImage;
     this.root.querySelector('[data-action="ai"]').disabled = !hasImage || !this.root.querySelector('[data-ai="consent"]').checked;
+    this.root.querySelector('[data-action="open"]').disabled = false;
     this.root.querySelectorAll('[data-scroll]').forEach((button) => { button.disabled = !hasImage; });
+    this.updateAiModelControls();
   }
 
   setStatus(message) {

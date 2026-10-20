@@ -1,4 +1,5 @@
 import io
+from pathlib import Path
 
 from flask import Flask
 from PIL import Image
@@ -172,3 +173,129 @@ def test_image_process_endpoint_validates_request(
 
     response, status = result if isinstance(result, tuple) else (result, 200)
     assert status == expected_status
+
+
+def test_image_ai_model_status_lists_each_engine(monkeypatch):
+    monkeypatch.setattr(
+        image_route, "_onnx_runtime_available", lambda: (True, "test-runtime")
+    )
+    model_keys = {key for key, _ in image_route.IMAGE_AI_TOOLS.values()}
+    monkeypatch.setattr(
+        image_route.ai_model_store,
+        "status",
+        lambda key: {
+            "available": key == "enhance",
+            "status": "done" if key == "enhance" else "idle",
+            "progress": 100 if key == "enhance" else 0,
+            "error": None,
+            "size": 1024,
+            "label": key,
+            "license": "MIT",
+        },
+    )
+    app = Flask(__name__)
+
+    with app.test_request_context("/api/image/ai/models"):
+        payload = image_route.api_image_ai_models().get_json()
+
+    assert payload["runtime_available"] is True
+    assert payload["runtime_version"] == "test-runtime"
+    assert payload["provider"] == "CPUExecutionProvider"
+    assert set(payload["models"]) == model_keys
+    assert payload["models"]["enhance"]["available"] is True
+
+
+def test_image_ai_model_download_rejects_invalid_key_and_missing_runtime(monkeypatch):
+    app = Flask(__name__)
+    with app.test_request_context("/api/image/ai/models/not-a-model", method="POST"):
+        response, status = image_route.api_image_ai_model_download("not-a-model")
+    assert status == 404
+    assert "không hợp lệ" in response.get_json()["error"]
+
+    monkeypatch.setattr(
+        image_route, "_onnx_runtime_available", lambda: (False, None)
+    )
+    with app.test_request_context("/api/image/ai/models/bg", method="POST"):
+        response, status = image_route.api_image_ai_model_download("bg")
+    assert status == 503
+    assert "onnxruntime" in response.get_json()["error"]
+
+
+def test_image_ai_tool_requires_downloaded_model(monkeypatch):
+    monkeypatch.setattr(
+        image_route, "_onnx_runtime_available", lambda: (True, "test-runtime")
+    )
+    monkeypatch.setattr(
+        image_route, "_uploaded_image", lambda _upload_id: {"path": Path("image.png")}
+    )
+    monkeypatch.setattr(image_route.ai_model_store, "available", lambda _key: False)
+    app = Flask(__name__)
+
+    with app.test_request_context(
+        "/api/image/ai/enhance",
+        method="POST",
+        data={"job_id": "00000000-0000-0000-0000-000000000000"},
+    ):
+        response, status = image_route.api_image_ai_start("enhance")
+
+    assert status == 409
+    assert response.get_json()["model"] == "enhance"
+
+
+def test_image_ai_enhance_enforces_memory_limit(monkeypatch):
+    monkeypatch.setattr(
+        image_route, "_onnx_runtime_available", lambda: (True, "test-runtime")
+    )
+    monkeypatch.setattr(
+        image_route,
+        "_uploaded_image",
+        lambda _upload_id: {
+            "path": Path("image.png"),
+            "width": 3000,
+            "height": 3000,
+        },
+    )
+    monkeypatch.setattr(image_route.ai_model_store, "available", lambda _key: True)
+    app = Flask(__name__)
+
+    with app.test_request_context(
+        "/api/image/ai/enhance",
+        method="POST",
+        data={"job_id": "00000000-0000-0000-0000-000000000000"},
+    ):
+        response, status = image_route.api_image_ai_start("enhance")
+
+    assert status == 413
+    assert response.get_json()["max_pixels"] == 8_000_000
+
+
+def test_image_ai_queue_rejects_when_capacity_is_full(monkeypatch):
+    monkeypatch.setattr(
+        image_route, "_onnx_runtime_available", lambda: (True, "test-runtime")
+    )
+    monkeypatch.setattr(
+        image_route, "_uploaded_image", lambda _upload_id: {"path": Path("image.png")}
+    )
+    monkeypatch.setattr(image_route.ai_model_store, "available", lambda _key: True)
+    monkeypatch.setattr(
+        image_route,
+        "jobs",
+        {
+            str(index): {"tool": "background", "status": "queued"}
+            for index in range(image_route.MAX_PENDING_IMAGE_AI_JOBS)
+        },
+    )
+    app = Flask(__name__)
+
+    with app.test_request_context(
+        "/api/image/ai/background",
+        method="POST",
+        data={
+            "job_id": "00000000-0000-0000-0000-000000000000",
+            "background": "transparent",
+        },
+    ):
+        response, status = image_route.api_image_ai_start("background")
+
+    assert status == 429
+    assert "hàng đợi" in response.get_json()["error"].lower()

@@ -1,6 +1,7 @@
 """Nét Ảnh AI: Real-ESRGAN (ncnn-vulkan)."""
 
 import threading
+import time
 import traceback
 import uuid
 import warnings
@@ -8,11 +9,13 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
+from core import auth
 from core import config as hubcfg
 from core import gpu
 from core.jobs import UPLOAD_DIR
 from core.jobs import gpu_wait_msg as _gpu_wait_msg
 from core.jobs import jobs, new_job
+from modules.image_ai import model_store as ai_model_store
 
 bp = Blueprint("image", __name__)
 
@@ -26,6 +29,21 @@ ESRGAN_MODELS = {
 MAX_OUTPUT_MP = 100  # megapixel đầu ra tối đa
 MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_IMAGE_UPLOAD_PIXELS = 32_000_000
+MAX_IMAGE_AI_ENHANCE_PIXELS = 8_000_000
+IMAGE_UPLOADS = {}
+IMAGE_UPLOADS_LOCK = threading.RLock()
+IMAGE_AI_LOCK = threading.Lock()
+IMAGE_AI_CAPACITY_LOCK = threading.Lock()
+MAX_PENDING_IMAGE_AI_JOBS = 3
+IMAGE_AI_TOOLS = {
+    "enhance": ("enhance", "Real-ESRGAN same-size enhancement"),
+    "background": ("bg", "BiRefNet background removal"),
+    "denoise": ("denoise", "SCUNet photo denoise"),
+    "deblur": ("deblur", "NAFNet photo deblur"),
+    "colorize": ("colorize", "DDColor photo colorization"),
+    "erase": ("erase", "LaMa object removal"),
+    "face_restore": ("face", "GFPGAN face restoration"),
+}
 
 
 def _inspect_image(path):
@@ -115,6 +133,21 @@ def api_image_upload():
         save_path.unlink(missing_ok=True)
         return jsonify({"error": "Phần mở rộng không khớp với định dạng ảnh thực tế."}), 400
 
+    current_user = auth.current_user()
+    now = time.time()
+    with IMAGE_UPLOADS_LOCK:
+        ttl_seconds = float(hubcfg.get()["upload_ttl_hours"]) * 3600
+        for previous_id, record in tuple(IMAGE_UPLOADS.items()):
+            if now - record["created_at"] > ttl_seconds:
+                IMAGE_UPLOADS.pop(previous_id, None)
+        IMAGE_UPLOADS[upload_id] = {
+            "path": save_path,
+            "width": w,
+            "height": h,
+            "owner": current_user["email"] if current_user else None,
+            "created_at": now,
+        }
+
     return jsonify(
         {
             "status": "ok",
@@ -125,6 +158,271 @@ def api_image_upload():
             "message": "Đã tải lên hình ảnh thành công",
         }
     )
+
+
+def _uploaded_image(upload_id):
+    if not isinstance(upload_id, str) or len(upload_id) != 36:
+        return None
+    with IMAGE_UPLOADS_LOCK:
+        record = IMAGE_UPLOADS.get(upload_id)
+    if not record:
+        return None
+    if not record["path"].is_file():
+        with IMAGE_UPLOADS_LOCK:
+            IMAGE_UPLOADS.pop(upload_id, None)
+        return None
+    denied = auth.check_job_owner(record)
+    return denied or record
+
+
+def _onnx_runtime_available():
+    try:
+        import onnxruntime
+
+        return True, onnxruntime.__version__
+    except ImportError:
+        return False, None
+
+
+@bp.route("/api/image/ai/models", methods=["GET"])
+def api_image_ai_models():
+    runtime_available, runtime_version = _onnx_runtime_available()
+    return jsonify(
+        {
+            "runtime_available": runtime_available,
+            "runtime_version": runtime_version,
+            "provider": "CPUExecutionProvider",
+            "models": {
+                key: ai_model_store.status(key)
+                for key in sorted({model for model, _ in IMAGE_AI_TOOLS.values()})
+            },
+        }
+    )
+
+
+@bp.route("/api/image/ai/models/<model_key>", methods=["POST"])
+def api_image_ai_model_download(model_key):
+    if not ai_model_store.valid(model_key):
+        return jsonify({"error": "Mô hình ảnh không hợp lệ."}), 404
+    runtime_available, _ = _onnx_runtime_available()
+    if not runtime_available:
+        return jsonify({"error": "Máy chủ chưa cài onnxruntime."}), 503
+    ai_model_store.start_download(model_key)
+    return jsonify(ai_model_store.status(model_key)), 202
+
+
+def _image_ai_progress(job_id, done, total, message):
+    percent = 10 + int(max(0, min(1, done / max(total, 1))) * 85)
+    jobs[job_id].update(progress=percent, message=message)
+
+
+def _run_image_ai(job_id, tool, image_path, mask_path=None, background="transparent"):
+    output_path = UPLOAD_DIR / f"image_ai_{job_id}.png"
+    try:
+        job = jobs[job_id]
+        model_key = IMAGE_AI_TOOLS[tool][0]
+        job.update(status="processing", progress=5, message="Đang chờ tác vụ AI khác...")
+        with IMAGE_AI_LOCK:
+            if job.get("status") == "cancelled":
+                return
+
+            def progress(done, total=None, message=None):
+                if isinstance(total, str):
+                    message = total
+                    total = 100
+                elif total is None:
+                    total = 100
+                    done = int(done)
+                _image_ai_progress(
+                    job_id,
+                    done,
+                    total,
+                    message or f"{IMAGE_AI_TOOLS[tool][1]}: {done}/{total}",
+                )
+
+            if tool == "background":
+                from modules.image_ai import bg_remove
+
+                width, height = bg_remove.remove_background(
+                    image_path,
+                    output_path,
+                    background=background,
+                    progress_cb=progress,
+                )
+            elif tool in ("denoise", "deblur"):
+                from modules.image_ai import restore_engine
+
+                width, height = restore_engine.clean_image(
+                    tool,
+                    image_path,
+                    output_path,
+                    progress_cb=progress,
+                )
+            elif tool == "colorize":
+                from modules.image_ai import restore_engine
+
+                width, height = restore_engine.colorize_image(
+                    image_path, output_path, progress_cb=progress
+                )
+            elif tool == "erase":
+                from modules.image_ai import restore_engine
+
+                width, height = restore_engine.inpaint_image(
+                    image_path, mask_path, output_path, progress_cb=progress
+                )
+            elif tool == "face_restore":
+                import cv2
+                import numpy as np
+                from PIL import Image
+                from modules.image_ai import face_restore
+
+                with Image.open(image_path) as source:
+                    rgb = np.asarray(source.convert("RGB"))
+                bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+                restored = face_restore.restore_faces(bgr, progress_cb=progress)
+                if not cv2.imwrite(str(output_path), restored):
+                    raise RuntimeError("Không ghi được ảnh phục hồi khuôn mặt.")
+                height, width = restored.shape[:2]
+            elif tool == "enhance":
+                from modules.image_ai import ai_engine
+
+                width, height = ai_engine.enhance_image(
+                    image_path, output_path, progress_cb=progress
+                )
+            else:
+                raise ValueError("Công cụ ảnh không được hỗ trợ.")
+
+        job.update(
+            status="completed",
+            progress=100,
+            message="Hoàn tất xử lý ảnh.",
+            result={
+                "tool": tool,
+                "engine": IMAGE_AI_TOOLS[tool][1],
+                "enhanced_path": f"/uploads/{output_path.name}",
+                "width": width,
+                "height": height,
+                "format": "PNG",
+            },
+        )
+    except Exception as exc:
+        output_path.unlink(missing_ok=True)
+        print(f"[image-ai] {tool} failed for task {job_id}: {exc}", flush=True)
+        jobs[job_id].update(
+            status="failed",
+            progress=0,
+            message=f"{IMAGE_AI_TOOLS[tool][1]} lỗi: {str(exc)[:200]}",
+        )
+    finally:
+        if mask_path:
+            mask_path.unlink(missing_ok=True)
+
+
+@bp.route("/api/image/ai/<tool>", methods=["POST"])
+def api_image_ai_start(tool):
+    if tool not in IMAGE_AI_TOOLS:
+        return jsonify({"error": "Công cụ AI ảnh không hợp lệ."}), 404
+    runtime_available, _ = _onnx_runtime_available()
+    if not runtime_available:
+        return jsonify({"error": "Máy chủ chưa cài onnxruntime."}), 503
+
+    upload_id = request.form.get("job_id")
+    record = _uploaded_image(upload_id)
+    if record is None:
+        return jsonify({"error": "Không tìm thấy ảnh đã tải lên."}), 404
+    if not isinstance(record, dict):
+        return record
+
+    model_key = IMAGE_AI_TOOLS[tool][0]
+    if not ai_model_store.available(model_key):
+        model_status = ai_model_store.status(model_key)
+        return jsonify(
+            {
+                "error": "Cần tải model trước khi chạy công cụ này.",
+                "model": model_key,
+                "model_size": model_status["size"],
+            }
+        ), 409
+    if tool == "enhance":
+        width = record.get("width")
+        height = record.get("height")
+        if width is None or height is None:
+            width, height, _ = _inspect_image(record["path"])
+        if width * height > MAX_IMAGE_AI_ENHANCE_PIXELS:
+            return jsonify(
+                {
+                    "error": "Tăng chi tiết AI hiện giới hạn ảnh đầu vào 8 megapixel để kiểm soát bộ nhớ.",
+                    "max_pixels": MAX_IMAGE_AI_ENHANCE_PIXELS,
+                }
+            ), 413
+
+    background = request.form.get("background", "transparent")
+    if tool == "background" and background != "transparent":
+        import re
+
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", background):
+            return jsonify({"error": "Màu nền phải có dạng #RRGGBB."}), 400
+
+    mask_path = None
+    if tool == "erase":
+        mask = request.files.get("mask")
+        if mask is None or not mask.filename:
+            return jsonify({"error": "Tải lên vùng mask trắng/đen để xóa vật thể."}), 400
+        if Path(mask.filename).suffix.lower() != ".png":
+            return jsonify({"error": "Mask phải là ảnh PNG."}), 400
+        mask_path = UPLOAD_DIR / f"image_mask_{uuid.uuid4()}.png"
+        try:
+            _save_upload(mask.stream, mask_path)
+            mask_width, mask_height, mask_format = _inspect_image(mask_path)
+            if mask_format != "PNG":
+                raise ValueError("Mask phải là ảnh PNG.")
+            from PIL import Image
+
+            with Image.open(mask_path) as mask_image:
+                mask_image.load()
+                if mask_image.mode not in {"1", "L", "LA", "RGBA", "RGB"}:
+                    raise ValueError("Mask PNG không có kênh màu được hỗ trợ.")
+            with Image.open(record["path"]) as image:
+                if abs(
+                    image.width / image.height - mask_width / mask_height
+                ) > 0.01:
+                    raise ValueError("Tỷ lệ khung hình mask phải khớp với ảnh gốc.")
+        except (OSError, ValueError) as exc:
+            mask_path.unlink(missing_ok=True)
+            return jsonify({"error": str(exc)}), 400
+
+    with IMAGE_AI_CAPACITY_LOCK:
+        pending = sum(
+            1
+            for job in jobs.values()
+            if job.get("tool") in IMAGE_AI_TOOLS
+            and job.get("status") in {"queued", "processing"}
+        )
+        if pending >= MAX_PENDING_IMAGE_AI_JOBS:
+            if mask_path:
+                mask_path.unlink(missing_ok=True)
+            return jsonify(
+                {"error": "Hàng đợi AI đang đầy. Hãy chờ một tác vụ hoàn tất rồi thử lại."}
+            ), 429
+
+        job_id = new_job(
+            f"Đang chờ {IMAGE_AI_TOOLS[tool][1]}...",
+            tool=tool,
+            result=None,
+        )
+        worker = threading.Thread(
+            target=_run_image_ai,
+            args=(job_id, tool, record["path"], mask_path, background),
+            daemon=True,
+        )
+        try:
+            worker.start()
+        except RuntimeError:
+            jobs.pop(job_id, None)
+            if mask_path:
+                mask_path.unlink(missing_ok=True)
+            raise
+    return jsonify({"job_id": job_id, "status": "queued", "tool": tool}), 202
 
 
 def worker_image(job_id, orig_path, scale, model_key):
@@ -241,11 +539,15 @@ def api_image_process():
     exe, _ = _esrgan_exe()
     if not exe:
         return jsonify({"error": "Máy chủ chưa cài Real-ESRGAN"}), 503
-    files = list(UPLOAD_DIR.glob(f"image_{Path(str(upload_id)).name}.*"))
-    if not files:
+    record = _uploaded_image(str(upload_id))
+    if record is None:
         return jsonify({"error": "Không tìm thấy ảnh đã upload"}), 404
+    if not isinstance(record, dict):
+        return record
     job_id = new_job("Đang xếp hàng...")
     threading.Thread(
-        target=worker_image, args=(job_id, files[0], scale, model_key), daemon=True
+        target=worker_image,
+        args=(job_id, record["path"], scale, model_key),
+        daemon=True,
     ).start()
     return jsonify({"job_id": job_id, "status": "queued"})
