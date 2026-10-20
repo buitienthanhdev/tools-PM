@@ -175,6 +175,38 @@ def _uploaded_image(upload_id):
     return denied or record
 
 
+def authorize_image_upload(filename):
+    if not filename.startswith(("image_", "enhanced_")):
+        return None
+
+    stem = Path(filename).stem
+    if stem.startswith("image_ai_"):
+        job_id = stem.removeprefix("image_ai_")
+        expected_path = f"/uploads/{filename}"
+        job = jobs.get(job_id)
+        if not job or (job.get("result") or {}).get("enhanced_path") != expected_path:
+            return jsonify({"error": "Ảnh không tồn tại."}), 404
+        return auth.check_job_owner(job)
+
+    if stem.startswith("enhanced_"):
+        job_id = stem.removeprefix("enhanced_")
+        expected_path = f"/uploads/{filename}"
+        job = jobs.get(job_id)
+        if not job or (job.get("result") or {}).get("enhanced_path") != expected_path:
+            return jsonify({"error": "Ảnh không tồn tại."}), 404
+        return auth.check_job_owner(job)
+
+    if stem.startswith("image_"):
+        upload_id = stem.removeprefix("image_")
+        with IMAGE_UPLOADS_LOCK:
+            record = IMAGE_UPLOADS.get(upload_id)
+        if not record or record["path"].name != filename or not record["path"].is_file():
+            return jsonify({"error": "Ảnh không tồn tại hoặc đã hết hạn."}), 404
+        return auth.check_job_owner(record)
+
+    return jsonify({"error": "Ảnh không tồn tại."}), 404
+
+
 def _onnx_runtime_available():
     try:
         import onnxruntime

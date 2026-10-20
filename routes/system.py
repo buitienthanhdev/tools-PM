@@ -84,11 +84,13 @@ def api_health():
         import whisper as wh
 
         uptime = time.time() - SERVER_START_TIME
+        image_ai_runtime_available, _ = image._onnx_runtime_available()
         return jsonify(
             {
                 "status": "ok",
                 "domain": "https://sonxit.io.vn",
                 "uptime_seconds": round(uptime, 2),
+                "image_ai_runtime_available": image_ai_runtime_available,
                 "cuda": torch.cuda.is_available(),
                 "device": "cuda" if torch.cuda.is_available() else "cpu",
                 "whisper": getattr(wh, "__version__", "loaded"),
@@ -110,6 +112,9 @@ def api_health():
 # ── Serve Uploads ─────────────────────────────────────────────
 @bp.route("/uploads/<path:filename>")
 def serve_uploads(filename):
+    image_access = image.authorize_image_upload(filename)
+    if image_access is not None:
+        return image_access
     as_attachment = request.args.get("download", "0") == "1"
     return send_from_directory(UPLOAD_DIR, filename, as_attachment=as_attachment)
 

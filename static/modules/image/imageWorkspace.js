@@ -121,13 +121,13 @@ class ImageWorkspace {
     this.module = module;
     this.bitmap = null;
     this.file = null;
-    this.originalUrl = null;
     this.state = initialState();
     this.undoStack = [];
     this.redoStack = [];
     this.rangeStart = null;
     this.previewFrame = null;
     this.jobSession = 0;
+    this.loadSession = 0;
     this.destroyed = false;
     this.downloadUrls = new Set();
     this.aiModels = null;
@@ -143,11 +143,14 @@ class ImageWorkspace {
 
   render() {
     this.container.innerHTML = `
-      ${pageHero(this.module, {
+      ${pageHero({
+        ...this.module,
+        category: this.module.category || 'Vision AI',
+      }, {
         title: 'Image <span class="thin">Workspace</span>',
         sub: 'Chỉnh ảnh cục bộ hoặc chạy các AI engine ONNX của NextGenUp trên máy chủ sau khi đồng ý gửi ảnh.',
         word: 'Image',
-        meta: ['Chỉnh sửa cục bộ', 'PNG · JPG · WebP', 'Undo · Redo'],
+        meta: ['Chỉnh sửa cục bộ', 'PNG · JPG · WebP · BMP', 'Undo · Redo'],
       })}
       <section class="iw-workspace" aria-label="Image editing workspace">
         <div class="iw-toolbar">
@@ -165,7 +168,7 @@ class ImageWorkspace {
         <div class="iw-layout">
           <aside class="iw-sidebar" aria-label="Công cụ">
             <div class="iw-sidebar-title">Công cụ</div>
-            <button type="button" class="iw-nav-button" data-scroll="iw-transform">Biến đổi</button>
+            <button type="button" class="iw-nav-button" data-scroll="iw-transform" aria-current="page">Biến đổi</button>
             <button type="button" class="iw-nav-button" data-scroll="iw-adjust">Điều chỉnh</button>
             <button type="button" class="iw-nav-button" data-scroll="iw-export">Xuất ảnh</button>
             <button type="button" class="iw-nav-button" data-scroll="iw-ai">AI upscale</button>
@@ -177,12 +180,12 @@ class ImageWorkspace {
             <div class="iw-stage" aria-label="Bản xem trước ảnh">
               <div class="iw-empty">
                 <strong>Mở ảnh để bắt đầu</strong>
-                <span>Kéo thả, dán từ clipboard hoặc chọn JPEG, PNG, WebP, BMP</span>
+                <span>Kéo thả, dán từ clipboard hoặc chọn JPEG, PNG, WebP, BMP · tối đa 50 MB / 32 MP</span>
                 <button class="btn btn-primary" type="button" data-action="open">Chọn ảnh</button>
               </div>
               <canvas class="iw-preview" aria-label="Ảnh đã chỉnh sửa" hidden></canvas>
               <canvas class="iw-mask-canvas" aria-label="Mặt nạ xóa vật thể" hidden></canvas>
-              <img class="iw-before" alt="Ảnh gốc" hidden>
+              <canvas class="iw-before" role="img" aria-label="Ảnh gốc theo cùng vùng cắt và hướng ảnh" hidden></canvas>
               <div class="iw-empty-error" role="alert" hidden></div>
             </div>
             <div class="iw-compare-row" hidden>
@@ -194,7 +197,10 @@ class ImageWorkspace {
             <div class="iw-ai-result" hidden>
               <div><strong>Kết quả Real-ESRGAN</strong><span data-ai-dimensions></span></div>
               <img alt="Ảnh sau khi được AI nâng cấp" data-ai-preview>
-              <a class="btn btn-primary btn-sm" data-ai-download>Tải ảnh AI</a>
+              <div class="iw-result-actions">
+                <button class="btn btn-secondary btn-sm" type="button" data-action="use-ai-result" data-result-image="upscale">Dùng kết quả để tiếp tục chỉnh</button>
+                <a class="btn btn-primary btn-sm" data-ai-download>Tải ảnh AI</a>
+              </div>
             </div>
             <div class="iw-ai-progress" data-tools-progress hidden>
               <progress max="100" value="0" data-tools-progress-bar></progress>
@@ -203,12 +209,15 @@ class ImageWorkspace {
             <div class="iw-ai-result" data-tools-result hidden>
               <div><strong data-tools-result-title>Kết quả AI</strong><span data-tools-result-dimensions></span></div>
               <img alt="Ảnh sau xử lý AI" data-tools-result-preview>
-              <a class="btn btn-primary btn-sm" data-tools-result-download>Tải ảnh kết quả</a>
+              <div class="iw-result-actions">
+                <button class="btn btn-secondary btn-sm" type="button" data-action="use-ai-result" data-result-image="nextgen">Dùng kết quả để tiếp tục chỉnh</button>
+                <a class="btn btn-primary btn-sm" data-tools-result-download>Tải ảnh kết quả</a>
+              </div>
             </div>
           </main>
 
           <aside class="iw-inspector" aria-label="Thông số chỉnh ảnh">
-            <section class="iw-tool-section" id="iw-transform">
+            <section class="iw-tool-section iw-active-section" id="iw-transform">
               <h2>Biến đổi</h2>
               <div class="iw-button-grid">
                 <button class="btn btn-secondary btn-sm" type="button" data-action="rotate-left" disabled>↶ Xoay trái</button>
@@ -446,6 +455,7 @@ class ImageWorkspace {
       else if (action === 'ai') this.runAiUpscale();
       else if (action === 'download-model') this.downloadAiModel(actionButton.dataset.model);
       else if (action === 'ai-tool') this.runAiTool(actionButton.dataset.tool);
+      else if (action === 'use-ai-result') this.useAiResult(actionButton.dataset.resultImage);
       else if (action === 'mask') this.toggleMaskDrawing();
       else if (action === 'clear-mask') this.clearMask();
       return;
@@ -453,6 +463,11 @@ class ImageWorkspace {
 
     const navButton = event.target.closest('[data-scroll]');
     if (navButton) {
+      this.root.querySelectorAll('[data-scroll]').forEach((button) => button.removeAttribute('aria-current'));
+      navButton.setAttribute('aria-current', 'page');
+      this.root.querySelectorAll('.iw-tool-section').forEach((section) => {
+        section.classList.toggle('iw-active-section', section.id === navButton.dataset.scroll);
+      });
       this.container.querySelector(`#${navButton.dataset.scroll}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }
@@ -566,9 +581,10 @@ class ImageWorkspace {
   }
 
   async loadFile(file) {
+    const loadRequest = ++this.loadSession;
     this.showError('');
     if (!ALLOWED_TYPES.has(file.type) && !ALLOWED_EXTENSIONS.test(file.name)) {
-      this.showError('Định dạng không hỗ trợ. Hãy chọn JPEG, PNG hoặc WebP.');
+      this.showError('Định dạng không hỗ trợ. Hãy chọn JPEG, PNG, WebP hoặc BMP.');
       return;
     }
     if (file.size > MAX_FILE_BYTES) {
@@ -580,29 +596,29 @@ class ImageWorkspace {
     let bitmap;
     try {
       bitmap = await createImageBitmap(file);
-      if (bitmap.width * bitmap.height > MAX_IMAGE_PIXELS) {
-        bitmap.close();
-        this.showError('Ảnh vượt quá giới hạn 32 megapixel để bảo vệ bộ nhớ trình duyệt.');
-        return;
-      }
     } catch (error) {
+      if (this.destroyed || loadRequest !== this.loadSession) return;
       this.showError(`Không thể giải mã ảnh: ${error.message || 'file có thể bị hỏng hoặc không được hỗ trợ.'}`);
       return;
     }
 
-    if (this.destroyed) {
+    if (this.destroyed || loadRequest !== this.loadSession) {
       bitmap.close();
+      return;
+    }
+    if (bitmap.width * bitmap.height > MAX_IMAGE_PIXELS) {
+      bitmap.close();
+      this.showError('Ảnh vượt quá giới hạn 32 megapixel để bảo vệ bộ nhớ trình duyệt.');
       return;
     }
     this.invalidateAiSession();
     this.aiToolBusy = false;
     if (this.bitmap) this.bitmap.close();
-    if (this.originalUrl) URL.revokeObjectURL(this.originalUrl);
     this.bitmap = bitmap;
     this.file = file;
-    this.originalUrl = URL.createObjectURL(file);
-    this.before.src = this.originalUrl;
     this.before.hidden = true;
+    this.before.width = 0;
+    this.before.height = 0;
     this.aiResult.hidden = true;
     this.root.querySelector('[data-tools-result]').hidden = true;
     this.root.querySelector('[data-tools-result-preview]').removeAttribute('src');
@@ -736,6 +752,7 @@ class ImageWorkspace {
     }
     context.clearRect(0, 0, this.canvas.width, this.canvas.height);
     context.drawImage(preview, 0, 0);
+    if (!this.before.hidden) this.renderBeforePreview(scale);
     if (this.maskCanvas.width !== preview.width || this.maskCanvas.height !== preview.height) {
       this.maskCanvas.width = preview.width;
       this.maskCanvas.height = preview.height;
@@ -751,6 +768,26 @@ class ImageWorkspace {
     this.showError('');
   }
 
+  renderBeforePreview(scale) {
+    const beforeState = {
+      ...this.state,
+      filters: { ...DEFAULT_FILTERS },
+    };
+    const before = drawImage(this.bitmap, beforeState, scale);
+    this.before.width = before.width;
+    this.before.height = before.height;
+    const context = this.before.getContext('2d', { alpha: true });
+    if (!context) {
+      before.width = 0;
+      before.height = 0;
+      throw new Error('Không tạo được ảnh gốc để so sánh.');
+    }
+    context.clearRect(0, 0, this.before.width, this.before.height);
+    context.drawImage(before, 0, 0);
+    before.width = 0;
+    before.height = 0;
+  }
+
   updateCompare(rawValue) {
     const value = Math.min(100, Math.max(0, Number(rawValue) || 0));
     this.before.style.clipPath = `inset(0 ${100 - value}% 0 0)`;
@@ -761,6 +798,14 @@ class ImageWorkspace {
     const visible = this.before.hidden;
     this.before.hidden = !visible;
     this.compareRow.hidden = !visible;
+    if (visible) {
+      const raw = imageDimensions(this.bitmap, this.state);
+      const scale = Math.min(1, PREVIEW_EDGE / Math.max(raw.width, raw.height));
+      this.renderBeforePreview(scale);
+    } else {
+      this.before.width = 0;
+      this.before.height = 0;
+    }
     this.root.querySelector('[data-action="compare"]').setAttribute('aria-pressed', String(visible));
     this.root.querySelector('[data-action="compare"]').textContent = visible ? 'Ẩn ảnh gốc' : 'So sánh gốc';
     this.setStatus(visible ? 'Đang so sánh ảnh gốc với bản xem trước; kéo thanh để đổi vùng hiển thị.' : 'Đã tắt chế độ so sánh.');
@@ -817,6 +862,32 @@ class ImageWorkspace {
         canvas.height = 0;
       }
       button.disabled = false;
+    }
+  }
+
+  async useAiResult(kind) {
+    const selector = kind === 'upscale' ? '[data-ai-preview]' : '[data-tools-result-preview]';
+    const image = this.root.querySelector(selector);
+    const resultPath = image?.getAttribute('src');
+    if (!resultPath) return;
+    const request = ++this.loadSession;
+
+    try {
+      this.setStatus('Đang mở ảnh AI trong workspace…');
+      const response = await fetch(resultPath, { credentials: 'same-origin' });
+      if (request !== this.loadSession || this.destroyed) return;
+      if (!response.ok) {
+        throw new Error(`Không tải được kết quả (HTTP ${response.status}); kết quả có thể đã hết hạn.`);
+      }
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) throw new Error('Máy chủ không trả về dữ liệu ảnh hợp lệ.');
+      if (blob.size > MAX_FILE_BYTES) throw new Error('Kết quả vượt giới hạn 50 MB của workspace. Hãy tải ảnh xuống để lưu.');
+      const file = new File([blob], `ai-result-${Date.now()}.png`, { type: blob.type });
+      await this.loadFile(file);
+      if (this.file !== file) return;
+      this.setStatus('Đã mở kết quả AI làm ảnh hiện tại. Lịch sử hoàn tác bắt đầu từ kết quả này; có thể tiếp tục chỉnh sửa và xuất ảnh.');
+    } catch (error) {
+      this.showError(`Không thể dùng kết quả AI trong workspace: ${error.message}`);
     }
   }
 
@@ -1220,8 +1291,10 @@ class ImageWorkspace {
     this.invalidateAiSession();
     if (this.previewFrame !== null) window.cancelAnimationFrame(this.previewFrame);
     if (this.bitmap) this.bitmap.close();
-    if (this.originalUrl) URL.revokeObjectURL(this.originalUrl);
     this.root.querySelector('[data-ai-preview]').removeAttribute('src');
+    this.root.querySelector('[data-tools-result-preview]').removeAttribute('src');
+    this.before.width = 0;
+    this.before.height = 0;
     for (const url of this.downloadUrls) URL.revokeObjectURL(url);
     this.downloadUrls.clear();
     this.container.innerHTML = '';

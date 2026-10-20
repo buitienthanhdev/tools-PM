@@ -150,6 +150,49 @@ def test_image_upload_endpoint_stops_oversized_stream(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_image_upload_access_is_limited_to_owner(tmp_path, monkeypatch):
+    upload_id = "11111111-1111-4111-8111-111111111111"
+    filename = f"image_{upload_id}.png"
+    image_path = tmp_path / filename
+    image_path.write_bytes(b"test image")
+    record = {"path": image_path, "owner": "owner@example.com"}
+    monkeypatch.setattr(image_route, "IMAGE_UPLOADS", {upload_id: record})
+    monkeypatch.setattr(
+        image_route.auth,
+        "check_job_owner",
+        lambda item: None if item["owner"] == "owner@example.com" else ("forbidden", 403),
+    )
+
+    assert image_route.authorize_image_upload(filename) is None
+    app = Flask(__name__)
+    with app.app_context():
+        missing = image_route.authorize_image_upload(
+            "image_22222222-2222-4222-8222-222222222222.png"
+        )
+    assert missing[1] == 404
+    assert missing[0].get_json()["error"] == "Ảnh không tồn tại hoặc đã hết hạn."
+    record["owner"] = "another@example.com"
+    assert image_route.authorize_image_upload(filename) == ("forbidden", 403)
+
+
+def test_ai_result_upload_access_is_limited_to_job_owner(monkeypatch):
+    job_id = "33333333-3333-4333-8333-333333333333"
+    filename = f"image_ai_{job_id}.png"
+    job = {
+        "owner": "another@example.com",
+        "result": {"enhanced_path": f"/uploads/{filename}"},
+    }
+    monkeypatch.setattr(image_route, "jobs", {job_id: job})
+    monkeypatch.setattr(
+        image_route.auth,
+        "check_job_owner",
+        lambda item: None if item["owner"] == "owner@example.com" else ("forbidden", 403),
+    )
+
+    assert image_route.authorize_image_upload(filename) == ("forbidden", 403)
+    assert image_route.authorize_image_upload("voice_result.wav") is None
+
+
 @pytest.mark.parametrize(
     ("payload", "expected_status"),
     [

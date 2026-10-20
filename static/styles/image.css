@@ -86,6 +86,12 @@
   outline: none;
 }
 
+.iw-nav-button[aria-current="page"] {
+  background: var(--bg-active);
+  color: var(--primary);
+  font-weight: 700;
+}
+
 .iw-nav-button:disabled { opacity: .45; cursor: not-allowed; }
 
 .iw-privacy-note {
@@ -293,6 +299,7 @@
 .iw-ai-result > div { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; }
 .iw-ai-result > div span { color: var(--text-muted); font-size: 10px; text-align: right; }
 .iw-ai-result img { display: block; width: 100%; max-height: 300px; object-fit: contain; }
+.iw-result-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .iw-ai-result a { justify-self: start; text-decoration: none; }
 
 .iw-model-runtime {
@@ -351,4 +358,9 @@
   .iw-stage { min-height: 260px; max-height: 52vh; }
   .iw-inspector { grid-template-columns: minmax(0, 1fr); grid-column: auto; }
   .iw-tool-section { border-right: 0; }
+  .iw-inspector { display: block; }
+  .iw-inspector .iw-tool-section:not(.iw-active-section) { display: none; }
+  .iw-nav-button { min-height: 40px; padding: 9px 12px; font-size: 11px; }
+  .iw-toolbar .btn { min-height: 38px; font-size: 11px; }
+  .iw-result-actions .btn { min-height: 38px; }
 }

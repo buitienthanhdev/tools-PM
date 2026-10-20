@@ -14,12 +14,20 @@ ADMIN = "tienthanh18082003@gmail.com"
 
 @pytest.fixture(scope="module")
 def app(tmp_path_factory):
-    from core import auth
+    from core import auth, jobs
 
     d = tmp_path_factory.mktemp("data")
     auth.USERS_PATH = str(d / "users.json")
     auth.SECRET_PATH = str(d / "secret.key")
     auth.SETUP_CODE_PATH = str(d / "code.txt")
+    upload_dir = d / "uploads"
+    upload_dir.mkdir()
+    jobs.UPLOAD_DIR = upload_dir
+    from routes import image as image_route
+    from routes import system as system_route
+
+    image_route.UPLOAD_DIR = upload_dir
+    system_route.UPLOAD_DIR = upload_dir
     import app as hub
 
     hub.app.config["TESTING"] = True
@@ -36,7 +44,9 @@ def post(c, url, **kw):
 
 def test_public_endpoints_open(app):
     c = client(app)
-    assert c.get("/api/health").status_code == 200
+    health = c.get("/api/health")
+    assert health.status_code == 200
+    assert isinstance(health.json["image_ai_runtime_available"], bool)
     assert c.get("/api/auth/me").json["user"] is None
 
 
@@ -157,6 +167,8 @@ def test_job_owner_isolated(app):
         content_type="multipart/form-data",
     )
     assert up.status_code == 200 and up.json["width"] == 64
+    assert a.get(up.json["file_path"]).status_code == 200
+    assert b.get(up.json["file_path"]).status_code == 403
     r = post(
         a, "/api/image/process", job_id=up.json["job_id"], scale="4x", model="photo"
     )
@@ -173,6 +185,8 @@ def test_job_owner_isolated(app):
         time.sleep(1)
     assert j["status"] == "completed", j
     assert (j["result"]["width"], j["result"]["height"]) == (256, 192)
+    assert a.get(j["result"]["enhanced_path"]).status_code == 200
+    assert b.get(j["result"]["enhanced_path"]).status_code == 403
     out = a.get(j["result"]["enhanced_path"])
     assert out.status_code == 200
     assert Image.open(io.BytesIO(out.data)).size == (256, 192)
