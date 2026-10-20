@@ -17,3 +17,12 @@ uploads/
 *.mp3
 *.m4a
 *.flac
+
+# Hub: dữ liệu nhạy cảm
+data/users.json
+data/secret.key
+data/admin_setup_code.txt
+data/config.json
+uploads/
+*.bak_pre_*
+modules/image_enhancer/bin/

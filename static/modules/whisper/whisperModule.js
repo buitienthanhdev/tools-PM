@@ -6,6 +6,7 @@
 import { whisperService } from '../../services/whisperService.js';
 import { eventBus } from '../../stores/eventBus.js';
 import { jobTracker } from '../../services/jobTracker.js';
+import { pageHero, panelHead, svgIcon } from '../../components/pageHero.js';
 
 export const whisperModule = {
   id: 'whisper',
@@ -28,86 +29,87 @@ export const whisperModule = {
     this.state.selectedFile = null;
 
     containerEl.innerHTML = `
-      <div class="workspace-page-header">
-        <div class="page-title-group">
-          <h1>🎙️ Module: Whisper Speech Recognition</h1>
-          <p>Tải file âm thanh/video để bóc băng chính xác bằng GPU PyTorch CUDA.</p>
-        </div>
-      </div>
+      ${pageHero(this, {
+        title: 'Bóc băng <span class="thin">giọng nói</span> thành văn bản',
+        sub: 'Tải file âm thanh hoặc video, Whisper chạy trên GPU sẽ chép lại từng câu kèm mốc thời gian, xuất được TXT, SRT và VTT.',
+        word: 'Whisper',
+        meta: ['GPU CUDA', 'MP3 · WAV · MP4', 'Xuất SRT / VTT'],
+      })}
 
-      <div class="workspace-two-col">
-        <!-- LEFT PANEL: Settings & File Upload -->
-        <div class="panel-card">
-          <h3 class="panel-title">⚙️ Cấu Hình Bóc Băng</h3>
-          
-          <div class="form-group">
-            <label class="form-label">Tải file Âm Thanh / Video</label>
-            <div class="dropzone-container" id="whisperDropzone">
-              <div class="dropzone-icon">🎵</div>
-              <div class="dropzone-title" id="dropzoneTitle">Kéo thả file vào đây hoặc bấm để chọn</div>
-              <div class="dropzone-sub">Hỗ trợ: MP3, WAV, M4A, FLAC, OGG, MP4, WebM</div>
-              <input type="file" id="whisperFileInput" hidden accept=".mp3,.wav,.m4a,.flac,.ogg,.mp4,.webm" />
+      <div class="mp-body">
+        <div class="mp-grid">
+          <div class="mp-panel">
+            ${panelHead('01', 'Cấu hình', 'bóc băng')}
+
+            <div class="form-group">
+              <label class="form-label">File âm thanh / video</label>
+              <div class="mp-drop" id="whisperDropzone">
+                <div class="mp-drop-ic">${svgIcon('music', 22)}</div>
+                <div class="mp-drop-title" id="dropzoneTitle">Kéo thả file vào đây hoặc <u>chọn file</u></div>
+                <div class="mp-drop-sub">MP3, WAV, M4A, FLAC, OGG, MP4, WebM</div>
+                <input type="file" id="whisperFileInput" hidden accept=".mp3,.wav,.m4a,.flac,.ogg,.mp4,.webm" />
+              </div>
             </div>
-          </div>
 
-          <div class="form-group">
-            <label class="form-label">Chọn Mô Hình AI (Model)</label>
-            <select class="form-select" id="whisperModel">
-              <option value="turbo" selected>Turbo (Nhanh & Chính xác nhất - Khuyên dùng)</option>
-              <option value="tiny">Tiny (Rất nhanh - Nhẹ nhất)</option>
-              <option value="base">Base (Cân bằng cho bài test nhanh)</option>
-              <option value="small">Small (Độ chính xác tốt)</option>
-              <option value="medium">Medium (Chính xác cao, hỗ trợ dịch tốt)</option>
-              <option value="large">Large (Chính xác cao nhất)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Ngôn Ngữ</label>
-            <select class="form-select" id="whisperLang">
-              <option value="vi" selected>Tiếng Việt (Vietnamese - Khuyên dùng cho nhạc Việt)</option>
-              <option value="auto">Auto Detect (Tự nhận diện)</option>
-              <option value="en">Tiếng Anh (English)</option>
-              <option value="zh">Tiếng Trung (Chinese)</option>
-              <option value="ja">Tiếng Nhật (Japanese)</option>
-              <option value="ko">Tiếng Hàn (Korean)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Tác Vụ (Task)</label>
-            <select class="form-select" id="whisperTask">
-              <option value="transcribe" selected>Transcribe (Bóc băng ra văn bản gốc)</option>
-              <option value="translate">Translate (Dịch trực tiếp sang Tiếng Anh)</option>
-            </select>
-          </div>
-
-          <button class="btn btn-primary" id="btnStartTranscribe" style="width:100%; margin-top:0.5rem;" disabled>
-            🚀 Bắt Đầu Chuyển Đổi
-          </button>
-        </div>
-
-        <!-- RIGHT PANEL: Result & Progress -->
-        <div class="panel-card" style="display:flex; flex-direction:column;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-            <h3 class="panel-title" style="margin-bottom:0;">📝 Kết Quả Văn Bản</h3>
-            <div style="display:flex; gap:0.5rem;" id="exportGroup">
-              <button class="btn btn-secondary" id="btnCopyText" style="padding:0.4rem 0.75rem; font-size:0.8rem;">📋 Copy</button>
-              <button class="btn btn-secondary" id="btnExportTxt" style="padding:0.4rem 0.75rem; font-size:0.8rem;">📄 TXT</button>
-              <button class="btn btn-secondary" id="btnExportSrt" style="padding:0.4rem 0.75rem; font-size:0.8rem;">🎬 SRT</button>
-              <button class="btn btn-secondary" id="btnExportVtt" style="padding:0.4rem 0.75rem; font-size:0.8rem;">📺 VTT</button>
+            <div class="form-group">
+              <label class="form-label">Mô hình AI</label>
+              <select class="form-select" id="whisperModel">
+                <option value="turbo" selected>Turbo — nhanh & chính xác nhất (khuyên dùng)</option>
+                <option value="tiny">Tiny — rất nhanh, nhẹ nhất</option>
+                <option value="base">Base — cân bằng cho bài test nhanh</option>
+                <option value="small">Small — độ chính xác tốt</option>
+                <option value="medium">Medium — chính xác cao, dịch tốt</option>
+                <option value="large">Large — chính xác cao nhất</option>
+              </select>
             </div>
-          </div>
 
-          <div id="progressArea" style="display:none; margin-bottom:1rem; padding:1rem; background-color:var(--primary-light); border-radius:var(--radius-md); border:1px solid var(--primary);">
-            <div style="font-weight:700; color:var(--primary); margin-bottom:0.4rem; font-size:0.875rem;" id="progressText">Đang xử lý...</div>
-            <div class="progress-bar-bg">
-              <div class="progress-bar-fill" id="progressBar"></div>
+            <div class="form-group">
+              <label class="form-label">Ngôn ngữ</label>
+              <select class="form-select" id="whisperLang">
+                <option value="vi" selected>Tiếng Việt (khuyên dùng cho nhạc Việt)</option>
+                <option value="auto">Tự nhận diện</option>
+                <option value="en">Tiếng Anh</option>
+                <option value="zh">Tiếng Trung</option>
+                <option value="ja">Tiếng Nhật</option>
+                <option value="ko">Tiếng Hàn</option>
+              </select>
             </div>
+
+            <div class="form-group">
+              <label class="form-label">Tác vụ</label>
+              <select class="form-select" id="whisperTask">
+                <option value="transcribe" selected>Transcribe — chép lại đúng ngôn ngữ gốc</option>
+                <option value="translate">Translate — dịch thẳng sang tiếng Anh</option>
+              </select>
+            </div>
+
+            <button class="btn btn-primary btn-block btn-lg" id="btnStartTranscribe" disabled>
+              ${svgIcon('spark', 18, 2)} Bắt đầu bóc băng
+            </button>
           </div>
 
-          <div class="result-box" id="resultText">
-            Chưa có dữ liệu. Vui lòng chọn file và bấm "Bắt Đầu Chuyển Đổi".
+          <div class="mp-panel flex">
+            ${panelHead('02', 'Kết quả', 'văn bản', `
+              <span id="exportGroup" style="display:contents">
+                <button class="btn btn-secondary btn-sm" id="btnCopyText">${svgIcon('copy', 14, 2)} Copy</button>
+                <button class="btn btn-secondary btn-sm" id="btnExportTxt">${svgIcon('file', 14, 2)} TXT</button>
+                <button class="btn btn-secondary btn-sm" id="btnExportSrt">${svgIcon('download', 14, 2)} SRT</button>
+                <button class="btn btn-secondary btn-sm" id="btnExportVtt">${svgIcon('download', 14, 2)} VTT</button>
+              </span>`)}
+
+            <div class="mp-progress" id="progressArea" style="display:none;">
+              <div class="mp-progress-msg" id="progressText">Đang xử lý...</div>
+              <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBar"></div></div>
+            </div>
+
+            <audio id="whisperAudio" controls style="width:100%;display:none;"></audio>
+
+            <div class="mp-output result-box" id="resultText" style="min-height:420px;max-height:640px;">
+              <div class="mp-empty">
+                <div class="mp-drop-ic">${svgIcon('text', 22)}</div>
+                Chưa có dữ liệu. Chọn file và bấm “Bắt đầu bóc băng”.
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -218,7 +220,14 @@ export const whisperModule = {
   handleFile(file, titleEl, btnEl) {
     this.state.selectedFile = file;
     const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-    if (titleEl) titleEl.innerHTML = `<strong>${file.name}</strong> (${sizeMB} MB)`;
+    if (titleEl) titleEl.innerHTML = `<strong>${this.escapeHtml(file.name)}</strong> (${sizeMB} MB)`;
+    const audio = document.getElementById('whisperAudio');
+    if (audio) {
+      if (audio.dataset.url) URL.revokeObjectURL(audio.dataset.url);
+      audio.dataset.url = URL.createObjectURL(file);
+      audio.src = audio.dataset.url;
+      audio.style.display = 'block';
+    }
     if (btnEl) btnEl.disabled = false;
   },
 
@@ -270,15 +279,15 @@ export const whisperModule = {
       return;
     }
 
-    let html = `<div style="font-weight:700; color:var(--primary); margin-bottom:0.75rem;">`;
-    html += `🌐 Ngôn ngữ: ${result.language.toUpperCase()} | ⏱ Thời gian bóc băng: ${result.duration}s | ⚡ Model: ${result.model}`;
+    let html = `<div class="mp-meta" style="margin:0 0 1rem;">`;
+    html += `<span>Ngôn ngữ: ${result.language.toUpperCase()}</span><span>Thời lượng: ${result.duration}s</span><span>Model: ${result.model}</span>`;
     html += `</div>`;
 
     result.segments.forEach(seg => {
       const startStr = this.formatTime(seg.start);
       const endStr = this.formatTime(seg.end);
       html += `
-        <div class="segment-row">
+        <div class="segment-row" data-start="${seg.start}" style="cursor:pointer;" title="Bấm để nghe đoạn này">
           <div class="segment-time">${startStr} → ${endStr}</div>
           <div class="segment-text">${this.escapeHtml(seg.text)}</div>
         </div>
@@ -286,6 +295,12 @@ export const whisperModule = {
     });
 
     containerEl.innerHTML = html;
+    containerEl.querySelectorAll('.segment-row[data-start]').forEach((row) => {
+      row.addEventListener('click', () => {
+        const audio = document.getElementById('whisperAudio');
+        if (audio && audio.src) { audio.currentTime = parseFloat(row.dataset.start); audio.play().catch(() => {}); }
+      });
+    });
   },
 
   formatTime(s) {

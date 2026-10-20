@@ -6,6 +6,7 @@ import { moduleRegistry } from '../js/moduleRegistry.js';
 import { router } from '../js/router.js';
 import { globalStore } from '../stores/globalStore.js';
 import { eventBus } from '../stores/eventBus.js';
+import { moduleIcon } from '../components/icons.js';
 
 export function renderSidebar(containerEl) {
   const modules = moduleRegistry.getAllModules();
@@ -30,7 +31,7 @@ export function renderSidebar(containerEl) {
       navHTML += `
         <li>
           <button class="nav-item-btn" data-route="${mod.route}" id="nav-btn-${mod.id}">
-            <span class="nav-icon">${mod.icon}</span>
+            <span class="nav-icon">${moduleIcon(mod, 18)}</span>
             <span class="nav-text">${mod.name}</span>
           </button>
         </li>
@@ -66,8 +67,8 @@ export function renderSidebar(containerEl) {
       </nav>
 
       <div class="sidebar-footer">
-        <div style="font-size:0.72rem; color:var(--text-dim); text-align:center; letter-spacing:0.03em;">
-          PM Tools Hub v3.0 &nbsp;·&nbsp; CUDA GPU
+        <div class="sidebar-footer-card">
+          <span>PM Tools Hub v3.0</span><b>CUDA GPU</b>
         </div>
       </div>
     </aside>

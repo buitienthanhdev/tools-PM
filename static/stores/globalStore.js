@@ -7,7 +7,7 @@ import { eventBus } from './eventBus.js';
 class GlobalStore {
   constructor() {
     this.state = {
-      theme: localStorage.getItem('pm_theme') || 'dark',
+      theme: 'dark', // giao diện Webfolio chỉ có nền tối
       activeRoute: 'catalog',
       systemHealth: {
         status: 'connecting',
@@ -33,7 +33,7 @@ class GlobalStore {
 
   setTheme(theme) {
     this.state.theme = theme;
-    localStorage.setItem('pm_theme', theme);
+    localStorage.setItem('pm_theme_v2', theme);
     document.documentElement.setAttribute('data-theme', theme);
     eventBus.emit('theme:changed', theme);
   }

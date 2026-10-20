@@ -11,7 +11,8 @@ echo.
 
 cd /d "%~dp0"
 
-set PYTHON=C:\Users\TIEN THANH\.conda\envs\paint-ai\python.exe
+set PYTHON=%~dp0.venv\Scripts\python.exe
+set LEGAL_ADMIN_KEY=000000
 
 echo Starting Watchdog Protection (Auto-healing WSGI Server and Cloudflare Tunnel)...
 "%PYTHON%" watchdog.py

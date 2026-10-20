@@ -1,0 +1,761 @@
+/* ============================================================
+   PM Tools Hub — Landing page (route "/"), bám sát số đo của Webfolio
+   (đo ở khung 1920px): container 1320px, hero 813px, khung module
+   1500px đè lên hero 100px, khối tính năng / thiết bị / dải chữ / CTA.
+   ============================================================ */
+
+/* Ẩn khung app trên trang chủ */
+.route-home #sidebarMount,
+.route-home #topNavMount { display: none !important; }
+.route-home .workspace-container { padding: 0; background: #1a1a1a; scroll-behavior: smooth; }
+.route-home .workspace-content { max-width: none; gap: 0; display: block; }
+
+.wfl {
+  --acc: #fd5b38;
+  --line: rgba(255, 255, 255, 0.1);
+  --sub: rgba(255, 255, 255, 0.7);
+  --label: #c6c8c9;
+  color: #fff;
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  background: #1a1a1a;
+  overflow-x: hidden;
+}
+
+.wfl .thin { font-weight: 200; }
+.wfl a { color: inherit; text-decoration: none; }
+.wfl button { font-family: inherit; }
+
+.wfl-container {
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 12px;
+}
+
+.wfl-noise::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E");
+}
+
+.wfl-eyebrow {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--acc);
+}
+
+/* ---------- Header ---------- */
+.wfl-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.35s;
+}
+
+.wfl-nav.is-solid {
+  background: rgba(15, 15, 15, 0.86);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.wfl-nav-in { display: flex; align-items: stretch; height: 72px; }
+
+.wfl-nav-links {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 50px;
+  padding-left: 36px;
+}
+
+.wfl-nav-links a {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition: color 0.25s;
+}
+
+.wfl-nav-links a:hover { color: var(--acc); }
+
+.wfl-nav-cta {
+  display: flex;
+  align-items: center;
+  padding-left: 30px;
+  border-left: 1px solid var(--line);
+}
+
+.wfl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 19px;
+  border-radius: 5px;
+  border: 1px solid var(--acc);
+  background: var(--acc);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.wfl-btn:hover { background: transparent; color: var(--acc); }
+.wfl-btn.pill { border-radius: 30px; padding: 14px 35px; font-size: 16px; }
+
+/* ---------- Hero (813px) ---------- */
+.wfl-hero {
+  position: relative;
+  height: 813px;
+  overflow: hidden;
+  padding: 180px 0 40px;
+  background:
+    radial-gradient(50% 70% at 82% 0%, rgba(76, 29, 149, 0.8), transparent 70%),
+    radial-gradient(55% 75% at 55% 40%, rgba(136, 19, 55, 0.8), transparent 70%),
+    radial-gradient(60% 85% at 0% 70%, rgba(113, 72, 18, 0.9), transparent 70%),
+    radial-gradient(40% 60% at 95% 95%, rgba(253, 91, 56, 0.3), transparent 70%),
+    #160e12;
+}
+
+.wfl-hero-c { position: relative; z-index: 3; }
+
+.wfl-hero h1 {
+  max-width: 780px;
+  font-size: 70px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.wfl-hero-word {
+  margin-top: 40px;
+  font-size: 280px;
+  font-weight: 800;
+  line-height: 1;
+  color: transparent;
+  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.15);
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Ảnh màn hình nghiêng kiểu isometric */
+.wfl-iso {
+  position: absolute;
+  z-index: 1;
+  top: -110px;
+  right: -170px;
+  width: 820px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  transform: rotate(-30deg) skewX(18deg);
+  pointer-events: none;
+}
+
+.wfl-iso img {
+  width: 100%;
+  display: block;
+  border-radius: 6px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+}
+
+.wfl-iso img:nth-child(odd) { transform: translateY(100px); }
+
+/* ---------- Khung module (1500px, đè hero 100px) ---------- */
+.wfl-demos {
+  position: relative;
+  z-index: 4;
+  margin-top: -100px;
+}
+
+.wfl-demos-box {
+  position: relative;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 120px 80px 70px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background:
+    repeating-linear-gradient(125deg, transparent 0 3px, rgba(255, 255, 255, 0.012) 3px 4px),
+    radial-gradient(70% 40% at 50% 0%, rgba(255, 255, 255, 0.035), transparent 70%),
+    #131313;
+}
+
+.wfl-demos-title {
+  text-align: center;
+  font-size: 50px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-bottom: 80px;
+}
+
+.wfl-demos-title b {
+  display: inline-block;
+  font-size: 110px;
+  font-weight: 300;
+  line-height: 0;
+  vertical-align: -0.16em;
+  margin: 0 4px;
+  color: transparent;
+  -webkit-text-stroke: 2px var(--acc);
+}
+
+.wfl-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 40px 30px;
+}
+
+.wfl-card { grid-column: span 2; }
+.wfl-card:last-child:nth-child(3n + 1) { grid-column: 3 / span 2; }
+
+.wfl-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+}
+
+.wfl-card-img {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  border-radius: 6px;
+  background: #161616;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1), border-color 0.3s, box-shadow 0.45s;
+}
+
+.wfl-card-img img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: top;
+  transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1), filter 0.4s;
+  filter: brightness(0.88);
+}
+
+/* lớp phủ cam + viền sáng khi hover */
+.wfl-card-img::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(253, 91, 56, 0) 40%, rgba(253, 91, 56, 0.38));
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+
+.wfl-card:hover .wfl-card-img,
+.wfl-card:focus-visible .wfl-card-img {
+  transform: translateY(-8px);
+  border-color: var(--acc);
+  box-shadow: 0 0 0 1px var(--acc), 0 24px 50px -12px rgba(253, 91, 56, 0.45);
+}
+
+.wfl-card:hover .wfl-card-img img { transform: scale(1.06); filter: brightness(1.05); }
+.wfl-card:hover .wfl-card-img::after { opacity: 1; }
+.wfl-card:focus-visible { outline: none; }
+
+.wfl-card-no {
+  position: absolute;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(15, 15, 15, 0.72);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: #fff;
+  transition: all 0.3s;
+}
+
+.wfl-card:hover .wfl-card-no { background: var(--acc); border-color: var(--acc); }
+
+.wfl-card-go {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  width: 78px;
+  height: 78px;
+  margin: -39px 0 0 -39px;
+  border-radius: 50%;
+  background: var(--acc);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  box-shadow: 0 10px 30px rgba(253, 91, 56, 0.5);
+  opacity: 0;
+  transform: scale(0.5) rotate(-30deg);
+  transition: all 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+
+.wfl-card:hover .wfl-card-go { opacity: 1; transform: none; }
+
+.wfl-card-cap {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+}
+
+.wfl-card-cap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 2px;
+  width: 0;
+  background: var(--acc);
+  transition: width 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.wfl-card:hover .wfl-card-cap::after { width: 100%; }
+
+.wfl-card h3 {
+  font-size: 19px;
+  font-weight: 600;
+  transition: color 0.3s;
+}
+
+.wfl-card:hover h3 { color: var(--acc); }
+
+.wfl-card small {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ---------- Tính năng (inner pages) ---------- */
+.wfl-pages {
+  position: relative;
+  overflow: hidden;
+  padding: 140px 0;
+  background: linear-gradient(180deg, #1a1a1a 0%, #1a1a1a 45%, #24160f 100%);
+}
+
+.wfl-pages h2 {
+  max-width: 740px;
+  margin-top: 15px;
+  font-size: 50px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.wfl-collage {
+  position: relative;
+  height: 600px;
+  margin-top: 70px;
+  overflow: hidden;
+}
+
+.wfl-collage-in {
+  position: absolute;
+  left: 50%;
+  top: 90px;
+  width: 2300px;
+  margin-left: -1080px;
+  display: grid;
+  grid-template-columns: repeat(4, 534px);
+  gap: 30px;
+  transform: rotate(-10deg);
+}
+
+.wfl-collage-in img {
+  width: 534px;
+  aspect-ratio: 534 / 323;
+  object-fit: cover;
+  object-position: top;
+  border-radius: 4px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.wfl-collage::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 320px;
+  background: linear-gradient(180deg, transparent, #24160f 85%);
+  pointer-events: none;
+}
+
+.wfl-collage-in img:nth-child(4n + 2),
+.wfl-collage-in img:nth-child(4n + 4) { transform: translateY(-90px); }
+
+.wfl-counters {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -130px;
+}
+
+.wfl-counter { padding: 0 40px; }
+.wfl-counter + .wfl-counter { border-left: 1px solid var(--line); padding-right: 15px; }
+
+.wfl-counter b {
+  display: block;
+  font-size: 50px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.wfl-counter small {
+  display: block;
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--label);
+}
+
+/* ---------- Thiết bị (responsive) ---------- */
+.wfl-resp {
+  padding: 140px 0;
+  background: #0f0f0f;
+  overflow: hidden;
+}
+
+.wfl-resp-in {
+  display: grid;
+  grid-template-columns: 1fr 520px;
+  gap: 60px;
+  align-items: center;
+}
+
+.wfl-devices {
+  position: relative;
+  height: 613px;
+  margin-left: -174px;
+}
+
+.wfl-tablet {
+  position: absolute;
+  left: 0;
+  top: 40px;
+  width: 78%;
+  padding: 14px;
+  border-radius: 30px;
+  background: #050505;
+  border: 3px solid #4a4a4a;
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.7), inset 0 0 0 1px #1d1d1d;
+  transform: rotate(-14deg) skewX(4deg);
+}
+
+.wfl-tablet img,
+.wfl-phone img {
+  width: 100%;
+  display: block;
+  border-radius: 16px;
+}
+
+.wfl-phone {
+  position: absolute;
+  right: 4%;
+  top: 30px;
+  width: 30%;
+  padding: 9px;
+  border-radius: 34px;
+  background: #050505;
+  border: 3px solid #4a4a4a;
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.75);
+  transform: rotate(10deg);
+}
+
+.wfl-phone img { border-radius: 26px; }
+
+.wfl-resp h2 {
+  margin-top: 15px;
+  font-size: 60px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.wfl-resp p {
+  margin-top: 30px;
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--sub);
+}
+
+.wfl-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 40px;
+  padding-left: 10px;
+  color: var(--acc);
+  font-size: 15px;
+  font-weight: 500;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.wfl-more span {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  transition: all 0.3s;
+}
+
+.wfl-more:hover span { background: var(--acc); transform: rotate(45deg); }
+
+/* ---------- Dải chữ chạy (810px) ---------- */
+.wfl-band {
+  position: relative;
+  overflow: hidden;
+  height: 810px;
+  padding: 80px 0;
+  display: flex;
+  align-items: center;
+  background:
+    repeating-radial-gradient(ellipse at 62% 42%, rgba(255, 255, 255, 0.04) 0 2px, transparent 2px 10px),
+    radial-gradient(55% 70% at 62% 42%, #262626, #101010 75%);
+}
+
+.wfl-band::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(120deg, transparent 0 22px, rgba(255, 255, 255, 0.025) 22px 24px);
+  mask-image: linear-gradient(90deg, #000, transparent 55%);
+  -webkit-mask-image: linear-gradient(90deg, #000, transparent 55%);
+}
+
+.wfl-band-track {
+  position: relative;
+  display: flex;
+  width: max-content;
+  gap: 50px;
+  margin-top: 260px;
+  animation: wfl-marquee 40s linear infinite;
+}
+
+.wfl-band-track span {
+  font-size: 140px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.wfl-band-track span:nth-child(even) {
+  color: transparent;
+  font-weight: 400;
+  -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.85);
+}
+
+@keyframes wfl-marquee { to { transform: translateX(-50%); } }
+
+/* ---------- CTA cuối trang (712px) ---------- */
+.wfl-cta {
+  position: relative;
+  overflow: hidden;
+  min-height: 712px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 140px 20px;
+  background:
+    radial-gradient(45% 70% at 85% 25%, rgba(76, 29, 149, 0.75), transparent 70%),
+    radial-gradient(50% 70% at 55% 45%, rgba(136, 19, 55, 0.7), transparent 70%),
+    radial-gradient(55% 80% at 5% 60%, rgba(113, 72, 18, 0.85), transparent 70%),
+    radial-gradient(35% 50% at 90% 85%, rgba(253, 91, 56, 0.35), transparent 70%),
+    #160e12;
+}
+
+.wfl-float {
+  position: absolute;
+  z-index: 1;
+  border-radius: 4px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.wfl-float.f1 { width: 220px; left: 20.5%; top: 50px; }
+.wfl-float.f2 { width: 300px; left: -40px; top: 44%; }
+.wfl-float.f3 { width: 390px; left: 12.5%; bottom: -90px; }
+.wfl-float.f4 { width: 340px; right: -30px; top: 30%; }
+.wfl-float.f5 { width: 370px; right: 6.5%; bottom: -110px; }
+.wfl-float.f6 { display: none; }
+
+.wfl-cta-in { position: relative; z-index: 2; }
+
+.wfl-tag {
+  display: inline-block;
+  position: relative;
+  z-index: 2;
+  padding: 7px 20px;
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(6px);
+  color: var(--acc);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  transform: rotate(-5deg);
+  margin-bottom: -12px;
+}
+
+.wfl-glass {
+  display: block;
+  width: min(850px, 100%);
+  margin: 0 auto;
+  padding: 40px 50px;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 50px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.wfl-cta p {
+  margin: 30px 0 40px;
+  font-size: 20px;
+  line-height: 1.7;
+  color: var(--sub);
+}
+
+/* Nút lên đầu trang */
+.wfl-top {
+  position: fixed;
+  right: 30px;
+  bottom: 30px;
+  z-index: 50;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s;
+}
+
+.wfl-top.show { opacity: 1; pointer-events: auto; }
+.wfl-top:hover { border-color: var(--acc); color: var(--acc); }
+
+/* Hiện dần khi cuộn tới */
+.wfl-reveal { opacity: 0; transform: translateY(40px); transition: opacity 0.9s ease, transform 0.9s ease; }
+.wfl-reveal.in { opacity: 1; transform: none; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1600px) {
+  .wfl-iso { right: -440px; }
+}
+
+@media (max-width: 1400px) {
+  .wfl-hero-word { font-size: 220px; }
+  .wfl-iso { right: -520px; }
+  .wfl-demos-box { padding: 110px 50px 60px; }
+  .wfl-devices { margin-left: 0; }
+}
+
+@media (max-width: 1100px) {
+  .wfl-hero h1 { font-size: 52px; }
+  .wfl-hero-word { font-size: 160px; }
+  .wfl-iso { opacity: 0.6; }
+  .wfl-resp-in { grid-template-columns: 1fr; }
+  .wfl-grid { grid-template-columns: repeat(2, 1fr); }
+  .wfl-card, .wfl-card:last-child:nth-child(3n + 1) { grid-column: auto; }
+  .wfl-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+@media (max-width: 760px) {
+  .wfl-nav-links { gap: 22px; padding-left: 4px; }
+  .wfl-nav-links a { font-size: 12px; }
+  .wfl-nav-links a:nth-child(3) { display: none; }
+  .wfl-nav-cta { padding-left: 14px; }
+  .wfl-btn { padding: 9px 14px; font-size: 13px; }
+  .wfl-hero { height: auto; padding: 130px 0 0; }
+  .wfl-hero h1 { font-size: 38px; }
+  .wfl-hero-word { font-size: 96px; margin-top: 30px; }
+  .wfl-iso { display: none; }
+  .wfl-demos { margin-top: -40px; }
+  .wfl-demos-box { padding: 70px 18px 30px; }
+  .wfl-demos-title { font-size: 32px; margin-bottom: 50px; }
+  .wfl-demos-title b { font-size: 70px; }
+  .wfl-grid { grid-template-columns: 1fr; }
+  .wfl-card:last-child:nth-child(odd) { grid-column: auto; }
+  .wfl-pages { padding: 90px 0; }
+  .wfl-pages h2, .wfl-resp h2 { font-size: 32px; }
+  .wfl-collage { height: 330px; }
+  .wfl-collage-in { transform: rotate(-10deg) scale(0.55); transform-origin: center top; }
+  .wfl-counter { padding: 0 22px; }
+  .wfl-counter b { font-size: 36px; }
+  .wfl-resp { padding: 90px 0; }
+  .wfl-devices { height: 380px; }
+  .wfl-band { height: 420px; }
+  .wfl-band-track { margin-top: 120px; }
+  .wfl-band-track span { font-size: 70px; }
+  .wfl-glass { padding: 26px 22px; border-radius: 30px; font-size: 30px; }
+  .wfl-cta p { font-size: 16px; }
+  .wfl-float { display: none; }
+}
+
+/* Ô công cụ bị khoá (chưa đăng nhập / chưa được cấp quyền) */
+.wfl-lock {
+  position: absolute;
+  z-index: 3;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(15, 15, 15, 0.72);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}

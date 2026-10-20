@@ -19,6 +19,7 @@ export default async function boot(T) {
     { whisperModule },
     { voxcpmModule },
     { imageModule },
+    { legalModule },
   ] = await Promise.all([
     import(`/js/moduleRegistry.js?t=${T}`),
     import(`/js/router.js?t=${T}`),
@@ -31,6 +32,7 @@ export default async function boot(T) {
     import(`/modules/whisper/whisperModule.js?t=${T}`),
     import(`/modules/voxcpm/voxcpmModule.js?t=${T}`),
     import(`/modules/image/imageModule.js?t=${T}`),
+    import(`/modules/legal/legalModule.js?t=${T}`),
   ]);
 
   // Register modules
@@ -38,6 +40,7 @@ export default async function boot(T) {
   moduleRegistry.register(whisperModule);
   moduleRegistry.register(voxcpmModule);
   moduleRegistry.register(imageModule);
+  moduleRegistry.register(legalModule);
 
   // Render shell
   const sidebarMount   = document.getElementById('sidebarMount');

@@ -53,6 +53,17 @@ Get-WmiObject Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyCon
     Write-Host "      Killed Python PID $($_.ProcessId)" -ForegroundColor Gray
 }
 
+# SpaceT (God's Eye View): preview server on 4173 and gateway on 4174
+foreach ($spacetPort in 4173, 4174) {
+    Get-NetTCPConnection -LocalPort $spacetPort -State Listen -ErrorAction SilentlyContinue | ForEach-Object {
+        $proc = Get-WmiObject Win32_Process -Filter "ProcessId=$($_.OwningProcess)" -ErrorAction SilentlyContinue
+        if ($proc -and $proc.Name -eq "node.exe") {
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+            Write-Host "      OK: SpaceT node process on port $spacetPort (PID $($proc.ProcessId)) stopped." -ForegroundColor Green
+        }
+    }
+}
+
 # ── STEP 3: Kill CMD windows related specifically to Tools PM ──
 Write-Host "[3/5] Closing CMD windows related strictly to Tools PM..." -ForegroundColor Yellow
 

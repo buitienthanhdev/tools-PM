@@ -1,10 +1,11 @@
 /**
  * MonaliMeow — GenReport AI Module
- * Structured Sheet Form UI for Daily Work Notes & Ollama Qwen 3.6 Word (.docx) Generator
+ * Structured Sheet Form UI for Daily Work Notes & AI local Word (.docx) Generator
  */
 
 import { jobTracker } from '../../services/jobTracker.js';
 import { eventBus } from '../../stores/eventBus.js';
+import { pageHero, panelHead, svgIcon } from '../../components/pageHero.js';
 
 export const genreportModule = {
   id: 'genreport',
@@ -12,7 +13,7 @@ export const genreportModule = {
   route: '/genreport',
   icon: '📄',
   category: 'Automation AI',
-  description: 'Tự động sinh báo cáo tiến độ kỹ thuật chuyên sâu bằng Local AI (Ollama Qwen 3.6) và xuất file Word (.docx) chuẩn doanh nghiệp.',
+  description: 'Tự động sinh báo cáo tiến độ kỹ thuật chuyên sâu bằng AI local (Ollama) và xuất file Word (.docx) chuẩn doanh nghiệp.',
   status: 'active',
 
   _state: { busy: false, unsubscribe: null, dailyData: [] },
@@ -45,99 +46,72 @@ export const genreportModule = {
       { day_idx: 6, day_name: 'Thứ 7', date_str: endStr, subtasks: [{ content: '', progress: '100%' }] }
     ];
 
+    const dateField = (id, pickerId, value, iso, label) => `
+      <div class="form-group">
+        <label class="form-label">${label}</label>
+        <div style="position:relative;display:flex;align-items:center;">
+          <input type="text" class="form-input" id="${id}" value="${value}" placeholder="DD/MM/YYYY" style="padding-right:2.8rem;" />
+          <input type="date" class="date-picker-overlay" id="${pickerId}" value="${iso}" style="position:absolute;right:0.5rem;opacity:0;width:2rem;height:2rem;cursor:pointer;z-index:2;" title="Chọn từ lịch" />
+          <span style="position:absolute;right:0.85rem;pointer-events:none;color:var(--primary);display:flex;z-index:1;">${svgIcon('calendar', 17, 2)}</span>
+        </div>
+      </div>`;
+
     el.innerHTML = `
-    <div class="workspace-page-header">
-      <div class="page-title-group">
-        <h1>📄 GenReport — Tự Động Sinh Báo Cáo Tiến Độ &amp; Xuất Word</h1>
-        <p>Nhập thông tin hành chính &amp; điền công việc theo dạng Bảng Sheet từng ngày bên dưới. Ollama AI (Qwen 3.6 35B) sẽ tự động làm rõ thuật ngữ, tổng hợp 4 phần báo cáo &amp; xuất file Word (.docx).</p>
-      </div>
-    </div>
+    ${pageHero(this, {
+      title: 'Báo cáo tiến độ <span class="thin">tự viết</span> bằng AI',
+      sub: 'Điền thông tin và ghi vắn tắt việc từng ngày. AI local sẽ làm rõ thuật ngữ, viết đủ 4 phần báo cáo và xuất file Word chuẩn doanh nghiệp.',
+      word: 'Report',
+      meta: ['Ollama · Qwen', 'Xuất .docx', '4 phần báo cáo'],
+    })}
 
-    <div style="display:flex;flex-direction:column;gap:1.5rem;max-width:1200px;">
+    <div class="mp-body">
 
-      <!-- SECTION 1: Administrative Info -->
-      <div class="panel-card">
-        <h3 class="panel-title">📋 1. Thông Tin Hành Chính (Mặc định điền sẵn)</h3>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:1rem;">
+      <div class="mp-panel">
+        ${panelHead('01', 'Thông tin', 'hành chính')}
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));column-gap:18px;">
           <div class="form-group">
-            <label class="form-label">Tên Công Ty</label>
+            <label class="form-label">Tên công ty</label>
             <input type="text" class="form-input" id="rep-company" value="CÔNG TY CỔ PHẦN PAINT & MORE" />
           </div>
           <div class="form-group">
-            <label class="form-label">Phòng Ban</label>
+            <label class="form-label">Phòng ban</label>
             <input type="text" class="form-input" id="rep-dept" value="Phòng IT-AI" />
           </div>
           <div class="form-group">
-            <label class="form-label">Họ và Tên</label>
+            <label class="form-label">Họ và tên</label>
             <input type="text" class="form-input" id="rep-name" value="BÙI TIẾN THÀNH" />
           </div>
           <div class="form-group">
-            <label class="form-label">Chức Vụ</label>
+            <label class="form-label">Chức vụ</label>
             <input type="text" class="form-input" id="rep-pos" value="Nhân viên AI-IT" />
           </div>
-          <div class="form-group">
-            <label class="form-label">Từ Ngày (Bắt đầu tuần - Thứ 2)</label>
-            <div style="position:relative;display:flex;align-items:center;">
-              <input type="text" class="form-input" id="rep-start-date" value="${startStr}" placeholder="DD/MM/YYYY" style="padding-right:2.5rem;" />
-              <input type="date" class="date-picker-overlay" id="picker-start-date" value="${isoStartStr}" style="position:absolute;right:0.4rem;opacity:0;width:2rem;height:2rem;cursor:pointer;z-index:2;" title="Chọn từ lịch" />
-              <span style="position:absolute;right:0.6rem;pointer-events:none;font-size:1.1rem;z-index:1;user-select:none;">📅</span>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Đến Ngày (Kết thúc tuần - Thứ 7)</label>
-            <div style="position:relative;display:flex;align-items:center;">
-              <input type="text" class="form-input" id="rep-end-date" value="${endStr}" placeholder="DD/MM/YYYY" style="padding-right:2.5rem;" />
-              <input type="date" class="date-picker-overlay" id="picker-end-date" value="${isoEndStr}" style="position:absolute;right:0.4rem;opacity:0;width:2rem;height:2rem;cursor:pointer;z-index:2;" title="Chọn từ lịch" />
-              <span style="position:absolute;right:0.6rem;pointer-events:none;font-size:1.1rem;z-index:1;user-select:none;">📅</span>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Ngày Viết Báo Cáo</label>
-            <div style="position:relative;display:flex;align-items:center;">
-              <input type="text" class="form-input" id="rep-date" value="${endStr}" placeholder="DD/MM/YYYY" style="padding-right:2.5rem;" />
-              <input type="date" class="date-picker-overlay" id="picker-rep-date" value="${isoEndStr}" style="position:absolute;right:0.4rem;opacity:0;width:2rem;height:2rem;cursor:pointer;z-index:2;" title="Chọn từ lịch" />
-              <span style="position:absolute;right:0.6rem;pointer-events:none;font-size:1.1rem;z-index:1;user-select:none;">📅</span>
-            </div>
-          </div>
+          ${dateField('rep-start-date', 'picker-start-date', startStr, isoStartStr, 'Từ ngày (thứ 2)')}
+          ${dateField('rep-end-date', 'picker-end-date', endStr, isoEndStr, 'Đến ngày (thứ 7)')}
+          ${dateField('rep-date', 'picker-rep-date', endStr, isoEndStr, 'Ngày viết báo cáo')}
         </div>
       </div>
 
-      <!-- SECTION 2: Structured Sheet Form Grid for Work Notes -->
-      <div class="panel-card" style="border:1px solid var(--primary-glow);background:var(--bg-card-hover);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
-          <h3 class="panel-title" style="color:var(--primary);margin-bottom:0;">
-            📊 2. Bảng Sheet Nhập Công Việc Sơ Phác (Khóa cứng Ngày/Tháng/Năm — Tự do (+) việc con)
-          </h3>
-          <div style="display:flex;gap:0.4rem;">
-            <button class="btn btn-secondary" id="btnEmptySheet" style="font-size:0.78rem;padding:0.3rem 0.6rem;">
-              🧹 Xóa Khung Trống
-            </button>
-            <button class="btn btn-secondary" id="btnFillSampleSheet" style="font-size:0.78rem;padding:0.3rem 0.6rem;">
-              💡 Nạp Mẫu Mặc Định
-            </button>
-          </div>
-        </div>
+      <div class="mp-panel">
+        ${panelHead('02', 'Công việc', 'trong tuần', `
+          <button class="btn btn-secondary btn-sm" id="btnEmptySheet">${svgIcon('trash', 14, 2)} Xoá trống</button>
+          <button class="btn btn-secondary btn-sm" id="btnFillSampleSheet">${svgIcon('bulb', 14, 2)} Nạp mẫu</button>`)}
 
-        <div id="sheetGridContainer" style="display:flex;flex-direction:column;gap:1.25rem;">
+        <div class="mp-hint" style="margin:-8px 0 22px;">${svgIcon('bulb', 15, 2)}<span>Ngày tháng đã khoá theo tuần đang chọn. Bấm “Thêm việc” để ghi nhiều đầu việc trong một ngày.</span></div>
+
+        <div id="sheetGridContainer" class="gr-days">
           ${this._renderSheetGridHTML()}
         </div>
 
-        <button class="btn btn-primary" id="btnGenerateReport" style="width:100%;font-size:1.05rem;padding:0.9rem;margin-top:1.5rem;display:flex;align-items:center;justify-content:center;gap:0.5rem;">
-          🚀 AI Phân Tích, Tự Động Sinh Toàn Bộ Báo Cáo &amp; Xuất Word (.docx)
+        <button class="btn btn-primary btn-block btn-lg" id="btnGenerateReport" style="margin-top:28px;">
+          ${svgIcon('spark', 18, 2)} AI viết báo cáo & xuất Word (.docx)
         </button>
 
-        <!-- Progress Bar -->
-        <div id="gen-progress-wrap" style="display:none;margin-top:1rem;">
-          <div id="gen-progress-msg" style="font-size:0.88rem;font-weight:600;color:var(--primary);margin-bottom:0.5rem;">
-            Đang khởi tạo...
-          </div>
-          <div class="progress-bar-bg">
-            <div class="progress-bar-fill" id="gen-progress-bar" style="width:10%"></div>
-          </div>
+        <div class="mp-progress" id="gen-progress-wrap" style="display:none;margin-top:18px;">
+          <div class="mp-progress-msg" id="gen-progress-msg">Đang khởi tạo...</div>
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="gen-progress-bar" style="width:10%"></div></div>
         </div>
       </div>
 
-      <!-- Download & AI Preview Result Container -->
       <div id="gen-output-result"></div>
 
     </div>`;
@@ -153,43 +127,30 @@ export const genreportModule = {
       const dayNum = dayItem.day_idx || (dIdx + 1);
       const dayName = dayItem.day_name || `Thứ ${dayNum + 1}`;
       const dateStr = dayItem.date_str || '';
-      const headerTitle = `${dayName} (${dateStr})`;
 
       const subtasks = (Array.isArray(dayItem.subtasks) && dayItem.subtasks.length > 0)
         ? dayItem.subtasks
         : [{ content: '', progress: '100%' }];
 
       const subtaskRowsHTML = subtasks.map((st, stIdx) => `
-        <div class="sheet-subtask-row" data-day-idx="${dayNum}" data-sub-idx="${stIdx}" style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
-          <span style="font-weight:700;color:var(--primary);font-size:0.9rem;user-select:none;width:24px;text-align:center;">+</span>
-          <textarea class="form-textarea st-content" rows="2" placeholder="Nhập nội dung công việc sơ phác..." style="flex:1;font-size:0.85rem;padding:0.4rem;">${st.content || ''}</textarea>
-          <div style="display:flex;align-items:center;gap:0.3rem;width:110px;">
-            <span style="font-size:0.78rem;color:var(--text-dim);">%:</span>
-            <input type="text" class="form-input st-progress" value="${st.progress || '100%'}" style="font-size:0.85rem;padding:0.35rem;text-align:center;" />
+        <div class="sheet-subtask-row gr-row" data-day-idx="${dayNum}" data-sub-idx="${stIdx}">
+          <span class="gr-bullet">${String(stIdx + 1).padStart(2, '0')}</span>
+          <textarea class="form-textarea st-content" rows="2" placeholder="Ghi vắn tắt công việc...">${st.content || ''}</textarea>
+          <div class="gr-pct">
+            <input type="text" class="form-input st-progress" value="${st.progress || '100%'}" title="Tiến độ" />
           </div>
           ${subtasks.length > 1 ? `
-            <button type="button" class="btn-del-sheet-subtask" data-day-idx="${dayNum}" data-sub-idx="${stIdx}"
-                    style="background:none;border:none;color:var(--rose);cursor:pointer;font-size:1.1rem;padding:0 0.3rem;" title="Xóa dòng công việc này">
-              🗑️
-            </button>
-          ` : '<div style="width:24px;"></div>'}
+            <button type="button" class="btn-del-sheet-subtask gr-del" data-day-idx="${dayNum}" data-sub-idx="${stIdx}" title="Xoá dòng này">${svgIcon('trash', 16, 2)}</button>
+          ` : '<div class="gr-del-ph"></div>'}
         </div>
       `).join('');
 
       return `
-        <div class="sheet-day-card" data-day-idx="${dayNum}" style="background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:1rem;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;padding-bottom:0.5rem;border-bottom:1px dashed var(--border-color);">
-            <div style="display:flex;align-items:center;gap:0.5rem;">
-              <span style="font-size:1.1rem;">📅</span>
-              <span style="font-weight:700;color:var(--text-main);font-size:0.95rem;">
-                ${headerTitle}
-              </span>
-            </div>
-            <button type="button" class="btn btn-secondary btn-add-sheet-subtask" data-day-idx="${dayNum}" style="font-size:0.75rem;padding:0.25rem 0.6rem;display:flex;align-items:center;gap:0.2rem;" title="Thêm dòng công việc con cho ngày này">
-              ➕ Thêm việc
-            </button>
+        <div class="sheet-day-card gr-day" data-day-idx="${dayNum}">
+          <div class="gr-day-head">
+            <div><b>${dayName}</b><span>${dateStr}</span></div>
+            <button type="button" class="btn btn-secondary btn-sm btn-add-sheet-subtask" data-day-idx="${dayNum}" title="Thêm việc cho ngày này">${svgIcon('plus', 14, 2)} Thêm việc</button>
           </div>
-
           <div class="sheet-subtasks-list">
             ${subtaskRowsHTML}
           </div>
@@ -524,7 +485,7 @@ export const genreportModule = {
     btn.disabled     = true;
     progWrap.style.display = 'block';
     progBar.style.width    = '10%';
-    progMsg.textContent    = 'Đang nạp dữ liệu & khởi tạo Ollama Qwen 3.6 AI Engine...';
+    progMsg.textContent    = 'Đang nạp dữ liệu & khởi tạo AI local (Ollama)...';
     output.innerHTML       = '';
 
     try {
@@ -555,13 +516,13 @@ export const genreportModule = {
         title: `Báo Cáo Tiến Độ (${full_name})`
       });
 
-      eventBus.emit('toast:show', { message: '🚀 Tác vụ đang chạy ngầm bằng Ollama Qwen 3.6 AI! Bạn có thể chuyển trang.' });
+      eventBus.emit('toast:show', { message: '🚀 Tác vụ đang chạy ngầm bằng AI local! Bạn có thể chuyển trang.' });
 
     } catch (err) {
       this._state.busy = false;
       btn.disabled     = false;
       progWrap.style.display = 'none';
-      output.innerHTML = `<div style="color:var(--rose);font-weight:600;padding:1rem;background:var(--bg-input);border-radius:var(--radius-md);">❌ Lỗi: ${err.message}</div>`;
+      output.innerHTML = `<div class="mp-error">${svgIcon('alert', 18, 2)} Lỗi: ${err.message}</div>`;
       eventBus.emit('toast:show', { message: `❌ ${err.message}`, type: 'error' });
     }
   },
@@ -604,7 +565,7 @@ export const genreportModule = {
         this._state.busy = false;
         if (btn) btn.disabled = false;
         if (progWrap) progWrap.style.display = 'none';
-        output.innerHTML = `<div style="color:var(--rose);font-weight:600;padding:1rem;background:var(--bg-input);border-radius:var(--radius-md);">❌ Lỗi: ${job.message}</div>`;
+        output.innerHTML = `<div class="mp-error">${svgIcon('alert', 18, 2)} Lỗi: ${job.message}</div>`;
       }
     });
   },
@@ -612,87 +573,62 @@ export const genreportModule = {
   _renderReportResult(r, outputEl) {
     if (!outputEl || !r) return;
 
-    // Render Preview Cards for AI Generated Sections
     let dailyRowsHTML = '';
     if (Array.isArray(r.daily_tasks)) {
       r.daily_tasks.forEach((dt, idx) => {
         const subtasks = dt.subtasks && dt.subtasks.length > 0 ? dt.subtasks : [dt];
         subtasks.forEach((st, stIdx) => {
           dailyRowsHTML += `
-            <tr style="border-bottom:1px solid var(--border-color);">
-              ${stIdx === 0 ? `<td rowspan="${subtasks.length}" style="padding:0.5rem;font-weight:600;vertical-align:top;background:var(--bg-card);">${dt.day || `Thứ ${idx+2}`}</td>` : ''}
-              <td style="padding:0.5rem;">${st.content || ''}</td>
-              <td style="padding:0.5rem;color:var(--primary);">${st.result || ''}</td>
-              <td style="padding:0.5rem;text-align:center;font-weight:600;">${st.progress || '100%'}</td>
-              <td style="padding:0.5rem;">${st.note || 'Hoàn thành'}</td>
+            <tr>
+              ${stIdx === 0 ? `<td rowspan="${subtasks.length}" style="font-weight:600;white-space:nowrap;">${dt.day || `Thứ ${idx + 2}`}</td>` : ''}
+              <td>${st.content || ''}</td>
+              <td style="color:var(--secondary);">${st.result || ''}</td>
+              <td style="text-align:center;font-weight:600;color:var(--primary);">${st.progress || '100%'}</td>
+              <td>${st.note || 'Hoàn thành'}</td>
             </tr>
           `;
         });
       });
     }
 
+    const section = (num, bold, thin, body) => `
+      <div class="mp-panel">
+        ${panelHead(num, bold, thin)}
+        ${body}
+      </div>`;
+
     outputEl.innerHTML = `
-      <div style="display:flex;flex-direction:column;gap:1.5rem;margin-top:1.5rem;">
-        
-        <!-- DOWNLOAD BUTTON CARD -->
-        <div style="background:var(--bg-input);border:1px solid var(--primary);border-radius:var(--radius-md);padding:1.5rem;text-align:center;">
-          <div style="color:var(--primary);font-size:1.15rem;font-weight:700;margin-bottom:0.4rem;">
-            🎉 Báo Cáo Tiến Độ Word (.docx) Đã Được Ollama AI Tạo Thành Công!
+      <div style="display:flex;flex-direction:column;gap:30px;">
+        <div class="mp-success">
+          <div>
+            <span class="mp-eyebrow">Đã tạo xong</span>
+            <h4>Báo cáo tiến độ Word đã sẵn sàng</h4>
+            <p>Họ và tên: <b>${r.full_name || ''}</b> · Ngày viết: <b>${r.report_date || ''}</b></p>
           </div>
-          <div style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1rem;">
-            Họ và tên: <strong>${r.full_name || 'BÙI TIẾN THÀNH'}</strong> &nbsp;·&nbsp; Ngày viết: <strong>${r.report_date || ''}</strong>
-          </div>
-          <a href="${r.download_url}" download="${r.filename}"
-             class="btn btn-primary" style="text-decoration:none;display:inline-flex;align-items:center;gap:0.5rem;font-size:1rem;padding:0.75rem 1.75rem;">
-            📥 Tải File Báo Cáo Word (.docx) Về Máy
-          </a>
+          <a href="${r.download_url}" download="${r.filename}" class="btn btn-primary btn-lg">${svgIcon('download', 18, 2)} Tải file .docx</a>
         </div>
 
-        <!-- AI PREVIEW 1: GENERAL SUMMARY -->
-        <div class="panel-card">
-          <h3 class="panel-title" style="color:var(--primary);">📌 I. Tình Hình Chung (Do Ollama AI Tự Động Tổng Hợp)</h3>
-          <div style="background:var(--bg-input);padding:1rem;border-radius:var(--radius-sm);font-size:0.9rem;line-height:1.6;">
-            ${r.general_summary || 'Chưa có thông tin.'}
-          </div>
-        </div>
+        ${section('I', 'Tình hình', 'chung', `<div class="mp-output">${r.general_summary || 'Chưa có thông tin.'}</div>`)}
 
-        <!-- AI PREVIEW 2: DAILY TASKS TABLE -->
-        <div class="panel-card">
-          <h3 class="panel-title" style="color:var(--primary);">📊 II. Bảng Công Việc Hàng Ngày (AI Đã Phân Tách Dòng Con &amp; Làm Rõ Thuật Ngữ)</h3>
+        ${section('II', 'Công việc', 'hằng ngày', `
           <div style="overflow-x:auto;">
-            <table class="data-table" style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+            <table class="mp-table data-table">
               <thead>
-                <tr style="background:var(--bg-input);text-align:left;border-bottom:1px solid var(--border-color);">
-                  <th style="padding:0.5rem;width:120px;">Thứ / Ngày</th>
-                  <th style="padding:0.5rem;">Nội Dung Công Việc</th>
-                  <th style="padding:0.5rem;">Kết Quả Thực Hiện (Đã làm rõ thuật ngữ)</th>
-                  <th style="padding:0.5rem;width:80px;text-align:center;">Tiến Độ</th>
-                  <th style="padding:0.5rem;width:100px;">Ghi Chú</th>
+                <tr>
+                  <th style="width:120px;">Thứ / Ngày</th>
+                  <th>Nội dung công việc</th>
+                  <th>Kết quả thực hiện</th>
+                  <th style="width:90px;text-align:center;">Tiến độ</th>
+                  <th style="width:120px;">Ghi chú</th>
                 </tr>
               </thead>
-              <tbody>
-                ${dailyRowsHTML}
-              </tbody>
+              <tbody>${dailyRowsHTML}</tbody>
             </table>
-          </div>
-        </div>
+          </div>`)}
 
-        <!-- AI PREVIEW 3: SHORT EVALUATION -->
-        <div class="panel-card">
-          <h3 class="panel-title" style="color:var(--primary);">📌 III. Đánh Giá Ngắn (Do Ollama AI Tự Động Sinh)</h3>
-          <div style="background:var(--bg-input);padding:1rem;border-radius:var(--radius-sm);font-size:0.9rem;line-height:1.6;white-space:pre-line;">
-            ${r.eval_short || 'Chưa có đánh giá.'}
-          </div>
-        </div>
+        ${section('III', 'Đánh giá', 'ngắn', `<div class="mp-output" style="white-space:pre-line;">${r.eval_short || 'Chưa có đánh giá.'}</div>`)}
 
-        <!-- AI PREVIEW 4: NEXT WEEK PLAN -->
-        <div class="panel-card">
-          <h3 class="panel-title" style="color:var(--primary);">🤖 IV. Kế Hoạch Tuần Tiếp Theo (Do Ollama AI Tự Động Định Hướng)</h3>
-          <div style="background:var(--bg-input);padding:1rem;border-radius:var(--radius-sm);font-size:0.9rem;line-height:1.6;">
-            ${r.next_plan_ideas || 'Chưa có kế hoạch.'}
-          </div>
-        </div>
-
+        ${section('IV', 'Kế hoạch', 'tuần tiếp theo', `<div class="mp-output">${r.next_plan_ideas || 'Chưa có kế hoạch.'}</div>`)}
       </div>
     `;
   },

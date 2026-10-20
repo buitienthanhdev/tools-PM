@@ -1,0 +1,13 @@
+tunnel: 5e661490-f1f6-4283-ada6-5a64194be715
+credentials-file: C:\Users\AI SEVER\.cloudflared\5e661490-f1f6-4283-ada6-5a64194be715.json
+
+# SpaceT (God's Eye View) — only ever reaches the app through gateway.mjs.
+ingress:
+  - hostname: spacet.sonxit.io.vn
+    service: http://127.0.0.1:4174
+    originRequest:
+      connectTimeout: 30s
+      keepAliveTimeout: 90s
+      keepAliveConnections: 100
+      tlsTimeout: 10s
+  - service: http_status:404

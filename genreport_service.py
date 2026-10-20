@@ -1,7 +1,7 @@
 """
 GenReport Service - Word Document Generator & Ollama AI Integration
 Generates professional Vietnamese work reports from user's raw notes.
-Uses Ollama qwen3:32b with a professional system prompt to expand terse notes
+Uses the local Ollama model from core.config (models.genreport) with a professional system prompt to expand terse notes
 into detailed, expert-level corporate report content.
 """
 
@@ -11,18 +11,15 @@ import uuid
 from pathlib import Path
 
 import docx
-import requests
+
+from core import config as hubcfg
+from core import llm
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 TEMPLATE_PATH = BASE_DIR / "templates" / "report_template.docx"
-DESKTOP_TEMPLATE = Path(
-    r"C:\Users\TIEN THANH\Desktop\BÁO CÁO TUẦN\Báo cáo công việc T7.01.08.2026 BÙI TIẾN THÀNH.docx"
-)
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "qwen3:32b"
 
 SYSTEM_PROMPT = """You are Qwen, a senior AI engineer, software architect, technical writer, researcher, and reasoning assistant.
 
@@ -76,83 +73,6 @@ Yêu cầu:
 - Nếu nội dung quá ngắn, suy luận hợp lý để bổ sung mục đích hoặc giá trị công việc nhưng không tạo ra sự kiện mới.
 - Ưu tiên dùng các động từ như: nghiên cứu, phát triển, triển khai, tối ưu, hoàn thiện, đánh giá, phân tích, khảo sát, xây dựng, thử nghiệm.
 - Trả về JSON hợp lệ duy nhất, không có text nào khác ngoài JSON."""
-
-
-def call_ollama_qwen(prompt_text, system_text=None, timeout=180):
-    """
-    Calls local Ollama qwen3:32b with system prompt + user prompt.
-    Returns the raw text response.
-    """
-    if system_text is None:
-        system_text = SYSTEM_PROMPT + "\n\n" + REPORT_SYSTEM_PROMPT
-
-    payload = {
-        "model": MODEL_NAME,
-        "system": system_text,
-        "prompt": prompt_text,
-        "stream": False,
-        "think": False,
-        "options": {"temperature": 0.35, "top_p": 0.9, "num_predict": 4000},
-    }
-    try:
-        print(f"[Ollama LLM] Sending prompt to {MODEL_NAME}...")
-        resp = requests.post(OLLAMA_URL, json=payload, timeout=timeout)
-        if resp.status_code == 200:
-            return resp.json().get("response", "").strip()
-        else:
-            print(f"[Ollama Error] HTTP {resp.status_code}: {resp.text[:200]}")
-            return None
-    except Exception as e:
-        print(
-            f"[Ollama Warning] LLM call failed ({type(e).__name__}). Using smart fallback."
-        )
-        return None
-
-
-def extract_json_from_llm(raw_text):
-    """
-    Robustly extract JSON object from LLM output which may contain thinking/preamble text.
-    Handles <think>...</think> tags and other preamble before JSON.
-    """
-    if not raw_text:
-        return None
-
-    # Remove thinking blocks
-    raw_text = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()
-
-    # Try to find JSON object
-    # First try: look for ```json ... ```
-    code_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw_text, re.DOTALL)
-    if code_match:
-        try:
-            return json.loads(code_match.group(1))
-        except Exception:
-            pass
-
-    # Second try: find the last/largest { ... } block
-    brace_start = raw_text.rfind("{")
-    if brace_start == -1:
-        brace_start = raw_text.find("{")
-    if brace_start != -1:
-        depth = 0
-        for i in range(brace_start, len(raw_text)):
-            if raw_text[i] == "{":
-                depth += 1
-            elif raw_text[i] == "}":
-                depth -= 1
-                if depth == 0:
-                    candidate = raw_text[brace_start : i + 1]
-                    try:
-                        return json.loads(candidate)
-                    except Exception:
-                        # Try fixing common issues
-                        fixed = candidate.replace("\n", "\\n").replace("\r", "")
-                        try:
-                            return json.loads(fixed)
-                        except Exception:
-                            break
-
-    return None
 
 
 def parse_raw_notes(raw_text):
@@ -330,250 +250,27 @@ CHỈ TRẢ VỀ JSON HỢP LỆ, không có text nào khác:
   "section_5_items": ["...", "..."]
 }}"""
 
-    raw_response = call_ollama_qwen(prompt, timeout=240)
-    if not raw_response:
-        print("[GenReport] Ollama unavailable, using smart rule-based expansion...")
-        return None
-
-    parsed = extract_json_from_llm(raw_response)
-    if parsed and "daily_tasks" in parsed and "general_summary" in parsed:
-        print(f"[GenReport AI] ✅ Successfully enriched report with {MODEL_NAME}!")
-        return parsed
-    else:
-        print(f"[GenReport AI] JSON parse failed. Raw snippet: {raw_response[:400]}")
-        return None
-
-
-def smart_expand_note(raw_note, progress):
-    """
-    Rule-based smart expansion of a raw note into a professional result description.
-    Used as fallback when Ollama fails or times out.
-    """
-    note = raw_note.strip()
-    p = int(re.search(r"\d+", progress).group()) if re.search(r"\d+", progress) else 100
-
-    # Professional content map — ORDERED list of tuples: most specific rules first, generic AFP last
-    expansions = [
-        (
-            r"RAG|BM25|vector search|Retrieval-Augmented",
-            f"Thử nghiệm nâng cấp hệ thống RAG (Retrieval-Augmented Generation) sử dụng AI Local Qwen 3.6 (Ollama) làm mô hình suy luận chính. Xây dựng dữ liệu sơn dạng JSON, kết hợp Rule Engine, Knowledge Graph và thuật toán BM25 (Vector Search + Ranking) để đánh giá khả năng gợi ý sản phẩm sơn. Đạt {p}%, cần bổ sung thêm ràng buộc nghiệp vụ.",
-        ),
-        (
-            r"flowchart|sơ đồ|flow",
-            "Xây dựng và hoàn thiện các Flowchart mô tả ảnh hưởng của các yếu tố bên ngoài (Chính phủ, Học thuật, Công nghệ, Thời tiết) đến kiến trúc và định hướng phát triển dự án AFP.",
-        ),
-        (
-            r"diện tích.*object|object.*diện tích|logic.*diện tích|sửa.*diện tích",
-            f"Chỉnh sửa thuật toán tính diện tích các Object trong mô hình 3D. Đã xử lý khoảng {p}% logic; các Object chưa có Category sẽ được AI nội suy, độ chính xác phụ thuộc vào chất lượng phân loại.",
-        ),
-        (
-            r"Ba Son",
-            "Thực hiện khảo sát thực tế tại khu vực Ba Son phục vụ nghiên cứu dự án, thu thập dữ liệu không gian và yêu cầu kỹ thuật thực địa.",
-        ),
-        (
-            r"KTS|kiến trúc sư|Phụng",
-            "Trao đổi với kiến trúc sư để thu thập yêu cầu nghiệp vụ, bổ sung kinh nghiệm thực tế vào thiết kế hệ thống.",
-        ),
-        (
-            r"anh Tú|bức tranh hệ thống|lộ trình|kiến trúc.*họ p|họp.*kiến trúc",
-            "Họp với cấp trên để làm rõ kiến trúc tổng thể của hệ thống AFP, xác định lộ trình triển khai khả thi cho các module chính.",
-        ),
-        (
-            r"Marketing|chiến dịch",
-            "Tham gia họp về chiến dịch Marketing mới, thảo luận định hướng phối hợp giữa các bộ phận.",
-        ),
-        (
-            r"Rule Engine|Knowledge Graph",
-            "Tìm hiểu Rule Engine và Knowledge Graph, đánh giá khả năng tích hợp vào kiến trúc AFP để nâng cao khả năng suy luận có cấu trúc.",
-        ),
-        (
-            r"Object Model",
-            "Nghiên cứu tầm quan trọng của Object Model trong kiến trúc hệ thống AFP, làm nền tảng mở rộng và suy luận.",
-        ),
-        (
-            r"Database|cơ sở dữ liệu",
-            "Tìm hiểu cách thiết kế Database phù hợp cho hệ thống AI, đánh giá các mô hình lưu trữ dữ liệu hiệu quả.",
-        ),
-        (
-            r"study|tìm hiểu.*AI|nghiên cứu.*mô hình|học.*AI",
-            "Nghiên cứu các xu hướng và công nghệ AI hiện đại cần quan tâm; tìm hiểu Database, Object Model và vai trò của Rule Engine, Knowledge Graph đối với kiến trúc AFP nhằm xây dựng nền tảng suy luận có khả năng mở rộng.",
-        ),
-        (
-            r"ràng buộc|constraint",
-            f"Bổ sung các ràng buộc nghiệp vụ để nâng cao tính chính xác và độ tinh vi của hệ thống. Đạt {p}%.",
-        ),
-        (
-            r"data.*json|json.*data",
-            "Xây dựng và cấu trúc dữ liệu sơn dạng JSON, phục vụ quá trình huấn luyện và suy luận của AI Local.",
-        ),
-        (
-            r"lắp.*máy|lắp ráp|phụ.*lắp",
-            "Hỗ trợ lắp ráp, cấu hình và kiểm thử máy tính, đảm bảo phần cứng vận hành ổn định.",
-        ),
-        (r"họp", "Tham gia họp nội bộ, thảo luận tiến độ và định hướng công việc."),
-        # AFP generic rule LAST — only matches if nothing else matched above
-        (
-            r"AFP|ai for finishing",
-            "Tiếp tục phát triển hệ thống AI For Finishing Platform (AFP), triển khai các tính năng mới theo đúng kiến trúc đã định.",
-        ),
-    ]
-
-    for pattern, expansion in expansions:
-        if re.search(pattern, note, re.IGNORECASE):
-            return expansion
-
-    # Generic expansion
-    p_text = f"Đạt {p}%." if p < 100 else "Hoàn thành."
-    return f"{note.capitalize()}. {p_text}"
-
-
-def build_smart_fallback(days_data, full_name, department, start_date, end_date):
-    """
-    Build a professional report structure from user's parsed notes without Ollama.
-    Uses smart rule-based expansion to produce professional content.
-    """
-    enriched_days = []
-    for d in days_data:
-        subtasks = []
-        for st in d.get("subtasks", []):
-            raw = st.get("content", "")
-            prog = st.get("progress", "100%")
-            result = smart_expand_note(raw, prog)
-
-            # Use full content as title (no truncation)
-            title = raw
-
-            p_num = (
-                int(re.search(r"\d+", prog).group()) if re.search(r"\d+", prog) else 100
-            )
-            note = (
-                "Hoàn thành"
-                if p_num >= 100
-                else ("Cần tiếp tục tối ưu" if p_num >= 70 else "Đang nghiên cứu")
-            )
-
-            subtasks.append(
-                {"content": title, "result": result, "progress": prog, "note": note}
-            )
-
-        # Build day label with date — only once, not duplicated
-        date_str = d.get("date_str", "")
-        day_name = d.get("day", "")
-        day_label = f"{day_name} ({date_str})" if date_str else day_name
-
-        enriched_days.append(
+    parsed = llm.chat_json(
+        hubcfg.model("genreport"),
+        [
             {
-                "day_idx": d["day_idx"],
-                "day": day_name,
-                "date_str": date_str,
-                "day_label": day_label,
-                "subtasks": subtasks,
-            }
-        )
-
-    # Build general summary — scan results for keywords to make it more meaningful
-    task_count = sum(
-        len(d.get("subtasks", [])) for d in enriched_days if d.get("subtasks")
+                "role": "system",
+                "content": SYSTEM_PROMPT + "\n\n" + REPORT_SYSTEM_PROMPT,
+            },
+            {"role": "user", "content": prompt},
+        ],
+        retries=1,
+        num_ctx=16384,
+        num_predict=6000,
+        temperature=0.35,
+        timeout=900,
+        name="genreport",
     )
-    all_raw = " ".join(n["raw"] for d in days_data for n in d.get("raw_notes", []))
-    topics = []
-    if re.search(r"AFP|ai for finishing|RAG|BM25", all_raw, re.IGNORECASE):
-        topics.append("phát triển hệ thống AI For Finishing Platform (AFP)")
-    if re.search(r"study|nghiên cứu|tìm hiểu", all_raw, re.IGNORECASE):
-        topics.append("nghiên cứu công nghệ AI")
-    if re.search(r"khảo sát|Ba Son|KTS|kiến trúc", all_raw, re.IGNORECASE):
-        topics.append("khảo sát thực tế và thu thập yêu cầu nghiệp vụ")
-    if re.search(r"flowchart|sơ đồ", all_raw, re.IGNORECASE):
-        topics.append("xây dựng Flowchart kiến trúc hệ thống")
-    if re.search(r"họp.*Tú|Marketing|họp", all_raw, re.IGNORECASE):
-        topics.append("họp định hướng và phối hợp liên bộ phận")
-
-    topic_str = (
-        ", ".join(topics)
-        if topics
-        else "phát triển hệ thống, nghiên cứu công nghệ và họp định hướng"
-    )
-    summary = (
-        (
-            f"Trong tuần tập trung triển khai các công việc chính bao gồm {topic_str}. "
-            f"Song song với việc phát triển hệ thống, tiếp tục khảo sát thực tế, nghiên cứu các công nghệ AI mới "
-            f"nhằm nâng cao chất lượng tư vấn và khả năng suy luận của AI."
+    if "daily_tasks" not in parsed or "general_summary" not in parsed:
+        raise llm.LLMError(
+            "AI trả về thiếu phần general_summary/daily_tasks, hãy thử lại"
         )
-        if len(topics) >= 2
-        else (
-            f"Trong tuần tập trung triển khai {task_count} đầu công việc chính bao gồm {topic_str}, "
-            f"đảm bảo tiến độ và chất lượng theo kế hoạch đề ra."
-        )
-    )
-
-    # Build section 3 (project progress bullets)
-    s3 = []
-    for d in enriched_days:
-        for st in d.get("subtasks", []):
-            if st.get("result"):
-                s3.append(st["result"])
-
-    # Build section 4 (short evaluation) — use results text not raw content
-    s4 = []
-    done = [
-        st
-        for d in enriched_days
-        for st in d.get("subtasks", [])
-        if st.get("progress", "100%") == "100%"
-    ]
-    ongoing = [
-        st
-        for d in enriched_days
-        for st in d.get("subtasks", [])
-        if st.get("progress", "100%") != "100%"
-    ]
-    for st in done[:5]:
-        # Use the expanded result text for evaluation
-        result_text = st.get("result", st["content"])
-        s4.append(f"• {result_text}")
-    for st in ongoing:
-        p = st.get("progress", "?%")
-        result_text = st.get("result", st["content"])
-        s4.append(f"• Đang thực hiện ({p}): {result_text} — cần tiếp tục tối ưu.")
-
-    # Build section 5 (next week plan) — use results as basis, not raw truncated content
-    s5 = []
-    for st in ongoing:
-        result_text = st.get("result", st["content"])
-        # Extract first sentence as basis for next week plan
-        first_sentence = (
-            result_text.split(".")[0] if "." in result_text else result_text
-        )
-        s5.append(f"Tiếp tục hoàn thiện: {first_sentence}.")
-    # Add standard items
-    if re.search(r"AFP|RAG|BM25", all_raw, re.IGNORECASE):
-        s5.append(
-            "Hoàn thiện kiến trúc tổng thể AFP và xây dựng lộ trình triển khai các module chính."
-        )
-        s5.append(
-            "Tiếp tục huấn luyện và tối ưu RAG với dữ liệu sơn và dữ liệu nghiệp vụ."
-        )
-    s5.append(
-        "Tiếp tục nghiên cứu các công nghệ AI mới phục vụ định hướng phát triển lâu dài của hệ thống."
-    )
-
-    return {
-        "general_summary": summary,
-        "daily_tasks": enriched_days,
-        "section_3_items": (
-            s3[:8]
-            if s3
-            else [
-                "Hoàn thành các nhiệm vụ công việc theo đúng yêu cầu đề ra trong tuần."
-            ]
-        ),
-        "section_4_items": (
-            s4[:8]
-            if s4
-            else ["Đảm bảo tiến độ và chất lượng công việc theo đúng kế hoạch."]
-        ),
-        "section_5_items": s5[:6],
-    }
+    return parsed
 
 
 def generate_word_report(data):
@@ -599,17 +296,13 @@ def generate_word_report(data):
     if not has_content:
         print("[GenReport] No task content found in input.")
 
-    # --- Step 2: Enrich with Ollama AI or smart fallback ---
-    print("[GenReport] Step 2: Enriching content with Ollama Qwen 3.6 AI...")
+    # --- Step 2: AI local viết nội dung (lỗi thì báo lỗi, không tự bịa) ---
+    if not has_content:
+        raise ValueError("Chưa có nội dung công việc nào để viết báo cáo")
+    print("[GenReport] Step 2: Enriching content with local AI...")
     enriched = enrich_with_ollama(
         days_data, start_date, end_date, full_name, position, department, company
     )
-
-    if enriched is None:
-        print("[GenReport] Step 2b: Using smart rule-based expansion as fallback...")
-        enriched = build_smart_fallback(
-            days_data, full_name, department, start_date, end_date
-        )
 
     # Extract enriched sections
     general_summary = enriched.get("general_summary", "")
@@ -626,7 +319,6 @@ def generate_word_report(data):
             and days_data[i].get("date_str")
         ):
             ed["date_str"] = days_data[i]["date_str"]
-        # Build day_label only if not already set by fallback
         if not ed.get("day_label"):
             date_str = ed.get("date_str", "")
             day_name = ed.get("day", "")
@@ -634,9 +326,12 @@ def generate_word_report(data):
 
     # --- Step 3: Fill Word template ---
     print("[GenReport] Step 3: Filling Word template...")
-    target_template = DESKTOP_TEMPLATE if DESKTOP_TEMPLATE.exists() else TEMPLATE_PATH
+    custom = hubcfg.get().get("genreport_template") or ""
+    target_template = (
+        Path(custom) if custom and Path(custom).exists() else TEMPLATE_PATH
+    )
     if not target_template.exists():
-        raise FileNotFoundError(f"Template file not found at {target_template}")
+        raise FileNotFoundError(f"Không thấy file mẫu Word: {target_template}")
 
     doc = docx.Document(str(target_template))
 

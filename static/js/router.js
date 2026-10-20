@@ -4,6 +4,8 @@
 
 import { moduleRegistry } from './moduleRegistry.js';
 import { globalStore } from '../stores/globalStore.js';
+import { authStore } from '../stores/authStore.js';
+import { eventBus } from '../stores/eventBus.js';
 
 class Router {
   constructor() {
@@ -53,6 +55,17 @@ class Router {
         `;
       }
       return;
+    }
+
+    // Chặn công cụ khi chưa đăng nhập / chưa được cấp quyền
+    const OPEN = ['catalog', 'login'];
+    if (!OPEN.includes(moduleObj.id) && authStore.loaded) {
+      if (moduleObj.id === 'admin' ? !authStore.isAdmin() : !authStore.can(moduleObj.id)) {
+        if (!authStore.user) sessionStorage.setItem('pm_next', path);
+        else eventBus.emit('toast:show', { message: authStore.isActive() ? 'Bạn chưa được cấp quyền dùng công cụ này' : 'Tài khoản đang chờ admin duyệt', type: 'error' });
+        if (window.location.pathname !== '/login') history.replaceState({ route: '/login' }, '', '/login');
+        moduleObj = moduleRegistry.getModuleById('login');
+      }
     }
 
     // Unmount previous active module if any

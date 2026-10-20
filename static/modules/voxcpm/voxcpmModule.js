@@ -6,6 +6,7 @@
 
 import { jobTracker } from '../../services/jobTracker.js';
 import { eventBus } from '../../stores/eventBus.js';
+import { pageHero, panelHead, svgIcon } from '../../components/pageHero.js';
 
 export const voxcpmModule = {
   id: 'voxcpm',
@@ -23,102 +24,83 @@ export const voxcpmModule = {
     this._state.busy    = false;
 
     el.innerHTML = `
-    <div class="workspace-page-header">
-      <div class="page-title-group">
-        <h1>🔊 VoxCPM2 Voice Design &amp; Cloning Engine</h1>
-        <p>Tạo giọng nói 48kHz đa ngôn ngữ. Sinh giọng mới từ mô tả hoặc nhân bản giọng nói từ file audio.</p>
-      </div>
-    </div>
+    ${pageHero(this, {
+      title: 'Thiết kế <span class="thin">& nhân bản</span> giọng nói AI',
+      sub: 'Tạo giọng nói 48kHz cho 30 ngôn ngữ. Mô tả giọng bạn muốn, hoặc đưa một đoạn audio ngắn để AI nhân bản đúng chất giọng đó.',
+      word: 'Voice',
+      meta: ['VoxCPM2 · 2B', '30 ngôn ngữ', 'WAV 48kHz'],
+    })}
 
-    <div class="workspace-two-col">
+    <div class="mp-body">
+      <div class="mp-grid">
 
-      <!-- LEFT: Settings -->
-      <div class="panel-card">
-        <h3 class="panel-title">🎛️ Cài Đặt</h3>
+        <div class="mp-panel">
+          ${panelHead('01', 'Cài đặt', 'giọng nói')}
 
-        <div class="form-group">
-          <label class="form-label">Chế độ</label>
-          <select class="form-select" id="vox-mode">
-            <option value="design" selected>🎨 Voice Design — Tạo giọng từ mô tả</option>
-            <option value="cloning">🎤 Voice Cloning — Nhân bản từ audio</option>
-            <option value="ultimate">🎙️ Ultimate Clone — Kế thừa hoàn toàn</option>
-          </select>
-        </div>
+          <div class="form-group">
+            <label class="form-label">Chế độ</label>
+            <select class="form-select" id="vox-mode">
+              <option value="design" selected>Voice Design — tạo giọng từ mô tả</option>
+              <option value="cloning">Voice Cloning — nhân bản từ audio</option>
+              <option value="ultimate">Ultimate Clone — kế thừa hoàn toàn</option>
+            </select>
+          </div>
 
-        <div class="form-group" id="vox-group-prompt">
-          <label class="form-label">Mô tả giọng nói (Control Prompt)</label>
-          <textarea class="form-textarea" id="vox-prompt" rows="3"
-            placeholder="Ví dụ: Giọng nam trẻ, truyền cảm, nhịp nhàng, năng lượng tích cực..."></textarea>
-        </div>
+          <div class="form-group" id="vox-group-prompt">
+            <label class="form-label">Mô tả giọng nói</label>
+            <textarea class="form-textarea" id="vox-prompt" rows="3"
+              placeholder="Ví dụ: Giọng nam trẻ, truyền cảm, nhịp nhàng, năng lượng tích cực..."></textarea>
+          </div>
 
-        <div class="form-group" id="vox-group-ref-text" style="display:none">
-          <label class="form-label">Lời thoại trong audio tham chiếu</label>
-          <textarea class="form-textarea" id="vox-ref-text" rows="2"
-            placeholder="Nhập chính xác nội dung lời nói trong file audio tham chiếu (để trống nếu muốn AI tự nhận diện)..."></textarea>
-        </div>
+          <div class="form-group" id="vox-group-ref-text" style="display:none">
+            <label class="form-label">Lời thoại trong audio tham chiếu</label>
+            <textarea class="form-textarea" id="vox-ref-text" rows="2"
+              placeholder="Nhập đúng lời nói trong file tham chiếu (để trống để AI tự nhận diện)..."></textarea>
+          </div>
 
-        <div class="form-group">
-          <label class="form-label">Audio tham chiếu (cho Voice Cloning)</label>
-          <input type="file" class="form-input" id="vox-ref-audio"
-                 accept=".mp3,.wav,.m4a,.flac,.ogg,.webm" />
-          <div id="vox-ref-name" style="font-size:0.75rem;color:var(--primary);margin-top:0.3rem;"></div>
-          <div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.35rem; line-height:1.35;">
-            💡 <strong>Mẹo nhân bản giọng hay nhất:</strong> Chọn file audio ngắn khoảng 5–15 giây <em>chỉ có tiếng người nói</em> (tránh file bài hát dài hoặc có nhạc nền dạo đầu).
+          <div class="form-group">
+            <label class="form-label">Audio tham chiếu (cho nhân bản giọng)</label>
+            <input type="file" class="form-input" id="vox-ref-audio" accept=".mp3,.wav,.m4a,.flac,.ogg,.webm" />
+            <div id="vox-ref-name" style="font-size:12.5px;color:var(--primary);margin-top:8px;"></div>
+            <div class="mp-hint">${svgIcon('bulb', 15, 2)}<span><b>Mẹo:</b> chọn đoạn 5–15 giây <em>chỉ có tiếng người nói</em>, tránh bài hát dài hoặc có nhạc nền.</span></div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:14px;">
+            <div class="form-group">
+              <label class="form-label">CFG Scale</label>
+              <input type="number" class="form-input" id="vox-cfg" value="2.0" step="0.5" min="1.0" max="5.0" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Mô hình</label>
+              <select class="form-select" id="vox-model">
+                <option value="voxcpm2-2b" selected>VoxCPM2 · 2B · 48kHz</option>
+                <option value="voxcpm1.5">VoxCPM1.5 · Expressive</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        <div class="form-group">
-          <label class="form-label">CFG Scale (1.0 – 5.0)</label>
-          <input type="number" class="form-input" id="vox-cfg"
-                 value="2.0" step="0.5" min="1.0" max="5.0" />
-        </div>
+        <div class="mp-panel flex">
+          ${panelHead('02', 'Văn bản', 'cần đọc', `<button class="btn btn-secondary btn-sm" id="btnInsertSampleText">${svgIcon('bulb', 14, 2)} Văn bản mẫu</button>`)}
 
-        <div class="form-group">
-          <label class="form-label">Mô hình</label>
-          <select class="form-select" id="vox-model">
-            <option value="voxcpm2-2b" selected>VoxCPM2 (2B · 30 langs · 48kHz)</option>
-            <option value="voxcpm1.5">VoxCPM1.5 (Expressive SFT)</option>
-          </select>
-        </div>
-      </div>
+          <textarea class="form-textarea" id="vox-text" rows="8"
+            placeholder="Nhập đoạn văn bản bạn muốn AI đọc (Tiếng Việt, Anh, Trung, Nhật, Hàn...)"></textarea>
 
-      <!-- RIGHT: Input + Output -->
-      <div class="panel-card" style="display:flex;flex-direction:column;gap:1rem;">
+          <button class="btn btn-primary btn-block btn-lg" id="vox-btn">${svgIcon('spark', 18, 2)} Tổng hợp giọng nói</button>
 
-        <div>
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-            <h3 class="panel-title" style="margin-bottom:0;">📝 Văn Bản Cần Đọc</h3>
-            <button class="btn btn-secondary" id="btnInsertSampleText" style="font-size:0.75rem; padding:0.25rem 0.6rem;">💡 Văn bản mẫu</button>
+          <div class="mp-progress" id="vox-progress-wrap" style="display:none;">
+            <div class="mp-progress-msg" id="vox-progress-msg">Đang xử lý...</div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill" id="vox-progress-bar" style="width:5%"></div></div>
           </div>
-          <textarea class="form-textarea" id="vox-text" rows="6"
-            placeholder="Nhập đoạn văn bản bạn muốn AI phát âm (Tiếng Việt, Anh, Trung, Nhật, Hàn...)"></textarea>
-        </div>
 
-        <button class="btn btn-primary" id="vox-btn" style="width:100%;font-size:1rem;padding:0.85rem;">
-          ⚡ Tổng Hợp Giọng Nói AI
-        </button>
-
-        <!-- Progress -->
-        <div id="vox-progress-wrap" style="display:none;">
-          <div id="vox-progress-msg"
-               style="font-size:0.85rem;font-weight:600;color:var(--primary);margin-bottom:0.5rem;">
-            Đang xử lý...
-          </div>
-          <div class="progress-bar-bg">
-            <div class="progress-bar-fill" id="vox-progress-bar" style="width:5%"></div>
-          </div>
-        </div>
-
-        <!-- Audio Output -->
-        <div>
-          <h4 style="font-size:0.9rem;font-weight:700;color:var(--text-main);margin-bottom:0.6rem;">
-            🔊 Kết Quả Âm Thanh
-          </h4>
-          <div id="vox-output"
-               style="background:var(--bg-input);border:1px solid var(--border-color);
-                      border-radius:var(--radius-md);padding:1.25rem;text-align:center;
-                      font-size:0.85rem;color:var(--text-dim);">
-            Chưa có âm thanh. Nhập văn bản và bấm "⚡ Tổng Hợp Giọng Nói AI".
+          <div>
+            <div class="mp-label">Kết quả âm thanh</div>
+            <div class="mp-output" id="vox-output">
+              <div class="mp-empty" style="min-height:150px;">
+                <div class="mp-drop-ic">${svgIcon('voxcpm', 22)}</div>
+                Chưa có âm thanh. Nhập văn bản và bấm “Tổng hợp giọng nói”.
+              </div>
+            </div>
           </div>
         </div>
 
@@ -167,7 +149,7 @@ export const voxcpmModule = {
         this._state.busy = false;
         if (btn) btn.disabled = false;
         if (progWrap) progWrap.style.display = 'none';
-        output.innerHTML = `<div style="color:var(--rose);font-weight:600;">❌ Lỗi: ${job.message}</div>`;
+        output.innerHTML = `<div class="mp-error">${svgIcon('alert', 18, 2)} Lỗi: ${job.message}</div>`;
       }
     });
   },
@@ -257,7 +239,7 @@ export const voxcpmModule = {
       this._state.busy = false;
       btn.disabled     = false;
       progWrap.style.display = 'none';
-      output.innerHTML = `<div style="color:var(--rose);font-weight:600;">❌ Lỗi: ${err.message}</div>`;
+      output.innerHTML = `<div class="mp-error">${svgIcon('alert', 18, 2)} Lỗi: ${err.message}</div>`;
       eventBus.emit('toast:show', { message: `❌ ${err.message}`, type: 'error' });
     }
   },
@@ -266,15 +248,11 @@ export const voxcpmModule = {
     if (!outputEl || !r) return;
     const durStr = r.duration ? `${r.duration}s` : 'Hoàn tất!';
     outputEl.innerHTML = `
-      <div style="color:var(--primary);font-weight:700;margin-bottom:0.75rem;">
-        ✅ Hoàn tất! ${durStr} · ${r.sample_rate || 48000}Hz
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div class="mp-meta" style="margin:0;"><span>Hoàn tất</span><span>${durStr}</span><span>${r.sample_rate || 48000}Hz</span></div>
+        <a href="${r.audio_url}" download="voxcpm_output.wav" class="btn btn-primary btn-sm">${svgIcon('download', 14, 2)} Tải WAV 48kHz</a>
       </div>
-      <audio controls autoplay src="${r.audio_url}"
-             style="width:100%;outline:none;margin-bottom:0.75rem;"></audio>
-      <a href="${r.audio_url}" download="voxcpm_output.wav"
-         class="btn btn-primary" style="text-decoration:none;display:inline-block;">
-        📥 Tải WAV 48kHz
-      </a>`;
+      <audio controls autoplay src="${r.audio_url}" style="width:100%;outline:none;"></audio>`;
   },
 
   unmount(el) {

@@ -18,6 +18,12 @@ import { whisperModule } from '../modules/whisper/whisperModule.js';
 import { voxcpmModule }  from '../modules/voxcpm/voxcpmModule.js';
 import { imageModule }   from '../modules/image/imageModule.js';
 import { genreportModule } from '../modules/genreport/genreportModule.js';
+import { legalModule } from '../modules/legal/legalModule.js';
+import { spacetModule } from '../modules/spacet/spacetModule.js';
+import { reviewingcvModule } from '../modules/reviewingcv/reviewingcvModule.js';
+import { authModule } from '../modules/auth/authModule.js';
+import { adminModule } from '../modules/auth/adminModule.js';
+import { authStore } from '../stores/authStore.js';
 
 async function boot() {
   console.log('[PM Tools Hub] Booting platform...');
@@ -31,6 +37,15 @@ async function boot() {
   moduleRegistry.register(voxcpmModule);
   moduleRegistry.register(imageModule);
   moduleRegistry.register(genreportModule);
+  moduleRegistry.register(legalModule);
+  moduleRegistry.register(spacetModule);
+  moduleRegistry.register(reviewingcvModule);
+  moduleRegistry.register(authModule);
+  moduleRegistry.register(adminModule);
+  window.moduleRegistry = moduleRegistry;
+
+  // Biết ai đang đăng nhập trước khi dựng trang
+  await authStore.refresh();
 
   // 3. Render layout shell
   const sidebarMount   = document.getElementById('sidebarMount');

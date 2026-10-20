@@ -1,88 +1,98 @@
 /* ============================================================
-   Enterprise AI Dashboard Platform — Theme & Design Tokens
-   Vercel / Linear / Supabase / Cursor Dark Mode Aesthetic
+   PM Tools Hub — Theme & Design Tokens
+   Webfolio-inspired: near-black canvas, hairline borders,
+   coral-orange accent (#fd5b38), Plus Jakarta Sans
    ============================================================ */
 
 :root {
-  /* Color Palette - Dark Slate & Deep Space */
-  --bg-app: #090d16;
-  --bg-sidebar: #0b111e;
-  --bg-header: rgba(11, 17, 30, 0.85);
-  --bg-card: #111827;
-  --bg-card-hover: #162032;
-  --bg-input: #0b1220;
-  --bg-glass: rgba(17, 24, 39, 0.7);
-  --bg-active: rgba(16, 185, 129, 0.12);
+  /* Surfaces */
+  --bg-app: #0f0f0f;
+  --bg-sidebar: #0b0b0b;
+  --bg-header: rgba(15, 15, 15, 0.82);
+  --bg-card: #161616;
+  --bg-card-hover: #1c1c1c;
+  --bg-input: #121212;
+  --bg-glass: rgba(22, 22, 22, 0.72);
+  --bg-active: rgba(253, 91, 56, 0.1);
+  --bg-elevated: rgba(255, 255, 255, 0.06);
 
   /* Borders & Dividers */
-  --border-color: #1e293b;
-  --border-focus: #334155;
-  --border-accent: rgba(16, 185, 129, 0.35);
+  --border-color: rgba(255, 255, 255, 0.09);
+  --border-focus: rgba(255, 255, 255, 0.2);
+  --border-accent: rgba(253, 91, 56, 0.45);
 
-  /* Brand Accents - Emerald & Cyan Neon Glow */
-  --primary: #10b981;
-  --primary-hover: #059669;
-  --primary-light: rgba(16, 185, 129, 0.15);
-  --primary-glow: 0 0 20px rgba(16, 185, 129, 0.35);
-  
-  --secondary: #06b6d4;
-  --secondary-light: rgba(6, 182, 212, 0.15);
-  
+  /* Brand Accent — coral orange */
+  --primary: #fd5b38;
+  --primary-hover: #e8482a;
+  --primary-light: rgba(253, 91, 56, 0.12);
+  --primary-glow: 0 0 24px rgba(253, 91, 56, 0.3);
+
+  --secondary: #ff9a7a;
+  --secondary-light: rgba(255, 154, 122, 0.14);
+
   --purple: #8b5cf6;
-  --amber: #f59e0b;
-  --rose: #f43f5e;
+  --amber: #fbbf24;
+  --rose: #f87171;
+  --success: #34d399;
 
   /* Typography Colors */
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-dim: #64748b;
-  --text-inverse: #090d16;
+  --text-main: #ffffff;
+  --text-muted: rgba(255, 255, 255, 0.64);
+  --text-dim: rgba(255, 255, 255, 0.4);
+  --text-inverse: #0f0f0f;
 
-  /* Radius & Spacing */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  /* Radius */
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
 
   /* Typography Fonts */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  /* Shadows & Elevations */
+  /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 14px -2px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 12px 32px -4px rgba(0, 0, 0, 0.65);
-  --shadow-glow: 0 0 25px -5px rgba(16, 185, 129, 0.25);
+  --shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 24px 48px -12px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 10px 30px -10px rgba(253, 91, 56, 0.45);
+
+  /* Hero gradient (purple → crimson → bronze) */
+  --hero-gradient:
+    radial-gradient(60% 90% at 85% 10%, rgba(91, 33, 182, 0.55), transparent 60%),
+    radial-gradient(55% 80% at 55% 45%, rgba(159, 18, 57, 0.55), transparent 65%),
+    radial-gradient(60% 90% at 5% 100%, rgba(133, 77, 14, 0.55), transparent 60%),
+    #120d10;
 
   /* Transitions */
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-smooth: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Light Theme Overrides (if toggled) */
+/* Light theme (toggle) — warm paper with the same accent */
 [data-theme="light"] {
-  --bg-app: #f8fafc;
+  --bg-app: #f5f4f1;
   --bg-sidebar: #ffffff;
-  --bg-header: rgba(255, 255, 255, 0.88);
+  --bg-header: rgba(245, 244, 241, 0.86);
   --bg-card: #ffffff;
-  --bg-card-hover: #f1f5f9;
-  --bg-input: #f1f5f9;
+  --bg-card-hover: #faf9f7;
+  --bg-input: #faf9f7;
   --bg-glass: rgba(255, 255, 255, 0.8);
-  --bg-active: rgba(16, 185, 129, 0.1);
+  --bg-active: rgba(253, 91, 56, 0.08);
+  --bg-elevated: rgba(15, 15, 15, 0.05);
 
-  --border-color: #e2e8f0;
-  --border-focus: #cbd5e1;
-  --border-accent: rgba(16, 185, 129, 0.4);
+  --border-color: rgba(15, 15, 15, 0.09);
+  --border-focus: rgba(15, 15, 15, 0.22);
 
-  --text-main: #0f172a;
-  --text-muted: #475569;
-  --text-dim: #94a3b8;
+  --text-main: #0f0f0f;
+  --text-muted: rgba(15, 15, 15, 0.64);
+  --text-dim: rgba(15, 15, 15, 0.42);
   --text-inverse: #ffffff;
 
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 8px 24px -10px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 24px 48px -16px rgba(0, 0, 0, 0.16);
 }
 
 *, *::before, *::after {
@@ -100,3 +110,13 @@ html, body {
   color: var(--text-main);
   -webkit-font-smoothing: antialiased;
 }
+
+::selection {
+  background: var(--primary);
+  color: #fff;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--primary); }

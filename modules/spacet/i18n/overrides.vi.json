@@ -1,0 +1,18 @@
+{
+  "Country (#)": "Country (#)",
+  "Elastic": "Elastic",
+  "COLL:": "COLL:",
+  "COLL: --:--:--Z": "COLL: --:--:--Z",
+  "COLL: #:#:#Z": "COLL: #:#:#Z",
+  "ORB: # PASS: DESC-#": "ORB: # PASS: DESC-#",
+  "BAND: PAN": "BAND: PAN",
+  "LVL: #A": "LVL: #A",
+  "ALT: --m SUN: --° EL": "CAO: --m MT: --° GN",
+  "ALT: #m SUN: -#° EL": "CAO: #m MT: -#° GN",
+  "never": "chưa có",
+  "AUTO HOP OFF": "TỰ NHẢY TẮT",
+  "AUTO HOP ON": "TỰ NHẢY BẬT",
+  "RESET CAL": "ĐẶT LẠI HC",
+  "SAVE CAL": "LƯU HC",
+  "UPDATE SHOT": "CẬP NHẬT"
+}
