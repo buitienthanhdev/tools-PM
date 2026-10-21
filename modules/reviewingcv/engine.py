@@ -1,10 +1,10 @@
 """
 Reviewing CV — chấm CV theo tin tuyển dụng, dùng bộ quy tắc của
-MadsLorentzen/ai-job-search (vendored tại ./ai-job-search, MIT).
+MadsLorentzen/ai-job-search (MIT, xem THIRD_PARTY_LICENSES/), đã rút gọn thành ./knowledge.
 
 Quy tắc (cổng điều kiện, 5 tiêu chí chấm, trọng số, ngưỡng, hướng dẫn sửa CV,
-văn phong) được đọc thẳng từ các file .md của repo, nên cập nhật repo là cập
-nhật luôn cách chấm. Chạy bằng AI local qua Ollama (không cần API key). Điểm tổng và kết luận tính ở server theo trọng số của repo.
+văn phong) được đọc thẳng từ các file .md trong ./knowledge, nên sửa file là
+đổi luôn cách chấm. Chạy bằng AI local qua Ollama (không cần API key). Điểm tổng và kết luận tính ở server theo trọng số của repo.
 """
 
 import datetime
@@ -12,8 +12,7 @@ import os
 import re
 import unicodedata
 
-REPO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ai-job-search")
-SKILL_DIR = os.path.join(REPO_DIR, ".claude", "skills", "job-application-assistant")
+SKILL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge")
 NUM_CTX = int(os.environ.get("CV_OLLAMA_CTX", "24576"))
 TIMEOUT = int(os.environ.get("CV_OLLAMA_TIMEOUT", "1200"))
 MAX_INPUT_CHARS = 60000

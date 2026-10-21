@@ -1,9 +1,9 @@
 import io
 from pathlib import Path
 
+import pytest
 from flask import Flask
 from PIL import Image
-import pytest
 
 from routes import image as image_route
 from routes.image import MAX_IMAGE_UPLOAD_PIXELS, _inspect_image

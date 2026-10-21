@@ -4,19 +4,10 @@ Giữ nguyên chữ ký generate_tts_audio(...) mà routes/speech.py đang dùng
 """
 
 import re
-import sys
-
-from . import config
-
-_SRC = config.os.path.join(
-    config.BASE_DIR, "modules", "voxcpm", "VoxCPM-source", "VoxCPM-main", "src"
-)
 
 
 class VoxEngine:
     def __init__(self, model_id="openbmb/VoxCPM2", device="auto"):
-        if _SRC not in sys.path:
-            sys.path.insert(0, _SRC)
         import voxcpm
         from voxcpm.model.utils import resolve_runtime_device
 

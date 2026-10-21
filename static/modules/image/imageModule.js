@@ -6,7 +6,7 @@ export const imageModule = {
   route: '/Image',
   icon: '🖼️',
   category: 'Vision AI',
-  description: 'Chỉnh sửa ảnh cục bộ và nâng cấp ảnh bằng Real-ESRGAN khi bạn đồng ý.',
+  description: 'Chỉnh sửa và nâng cấp ảnh bằng AI theo dự án: ảnh nguồn bên trái, kết quả bên phải.',
   status: 'active',
 
   render(containerEl) {

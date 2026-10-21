@@ -57,7 +57,7 @@ def embed(model, texts, *, name="embed", batch=16, timeout=300):
                     raise LLMError(f"Ollama embed lỗi HTTP {r.status_code}: {r.text[:200]}")
                 out.extend(r.json()["embeddings"])
     except requests.RequestException as e:
-        raise LLMError(f"Không gọi được Ollama embed: {e}")
+        raise LLMError(f"Không gọi được Ollama embed: {e}") from e
     m = np.asarray(out, dtype="float32")
     norms = np.linalg.norm(m, axis=1, keepdims=True)
     return m / np.maximum(norms, 1e-9)
@@ -107,9 +107,9 @@ def chat(
                 payload.pop("think", None)
                 r = requests.post(url, json=payload, timeout=timeout)
     except requests.ConnectionError:
-        raise LLMError("Mất kết nối Ollama (localhost:11434)")
+        raise LLMError("Mất kết nối Ollama (localhost:11434)") from None
     except requests.Timeout:
-        raise LLMError(f"Ollama trả lời quá {timeout}s")
+        raise LLMError(f"Ollama trả lời quá {timeout}s") from None
     if r.status_code != 200:
         raise LLMError(f"Ollama lỗi HTTP {r.status_code}: {r.text[:200]}")
     data = r.json()

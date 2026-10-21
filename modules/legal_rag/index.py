@@ -1,13 +1,13 @@
 """Chỉ mục tìm kiếm lai: BM25 (từ + cặp từ, có bản bỏ dấu) + vector (Ollama embedding), hợp nhất bằng RRF."""
 
-import hashlib
 import math
-import os
 import re
 import unicodedata
 from collections import Counter
 
 import numpy as np
+
+from . import vecstore
 
 STOPWORDS = set(
     "và của là có cho các một những được trong khi với này đó thì bị bởi để "
@@ -72,24 +72,15 @@ class Index:
             except Exception as e:  # không có embedding vẫn tìm được bằng BM25
                 self.embed_error = str(e)
 
-    # ── vector (lưu cache theo nội dung để khỏi tính lại) ────
+    # ── vector (kho gộp, lưu theo nội dung để khỏi tính lại) ──
     def _load_vectors(self, docs, cache_dir, embed_fn, model):
-        os.makedirs(cache_dir, exist_ok=True)
-        parts = []
-        for d in docs:
-            texts = [embed_text(d["name"], c) for c in d["chunks"]]
-            key = hashlib.sha1((model + "\n" + "\n".join(texts)).encode()).hexdigest()[:16]
-            path = os.path.join(cache_dir, f"vec_{d['id']}_{key}.npy")
-            if os.path.exists(path):
-                m = np.load(path)
-            else:
-                m = embed_fn(texts)
-                for old in os.listdir(cache_dir):  # xoá bản cũ của tài liệu này
-                    if old.startswith(f"vec_{d['id']}_"):
-                        os.remove(os.path.join(cache_dir, old))
-                np.save(path, m)
-            parts.append(m)
-        return np.vstack(parts)
+        return vecstore.load_or_build(
+            docs,
+            lambda d: [embed_text(d["name"], c) for c in d["chunks"]],
+            cache_dir,
+            embed_fn,
+            model,
+        )
 
     # ── tìm kiếm ──────────────────────────────────────────────
     def bm25(self, query):

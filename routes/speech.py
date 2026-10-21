@@ -9,17 +9,11 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
-from core import config as hubcfg
 from core import gpu
-from core.jobs import UPLOAD_DIR
+from core.jobs import UPLOAD_DIR, jobs, new_job
 from core.jobs import gpu_wait_msg as _gpu_wait_msg
-from core.jobs import jobs, new_job
 
 bp = Blueprint("speech", __name__)
-
-VOXCPM_APP = os.path.join(
-    hubcfg.BASE_DIR, "modules", "voxcpm", "VoxCPM-source", "VoxCPM-main"
-)
 
 AUDIO_EXTS = {
     ".mp3",
@@ -64,7 +58,7 @@ def get_voxcpm():
                 print("[VoxCPM] VoxCPM2 loaded successfully")
             except Exception as e:
                 print(f"[VoxCPM] Error loading model: {e}")
-                raise RuntimeError(f"VoxCPM2 model failed to load: {e}")
+                raise RuntimeError(f"VoxCPM2 model failed to load: {e}") from e
         return _vox_demo
 
 

@@ -5,7 +5,6 @@ so any device on the network can use AI upscaling without WebGPU, and
 batch jobs don't strain the browser.
 """
 
-import os
 import threading
 
 import numpy as np
@@ -35,7 +34,7 @@ def _get_session():
         if _session is None:
             _session = ort.InferenceSession(
                 str(paths.find_model('realesr-general-x4v3.onnx')),
-                providers=['CPUExecutionProvider']
+                providers=paths.ort_providers()
             )
         return _session
 

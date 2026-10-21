@@ -5,20 +5,19 @@ Chấm CV theo một tin tuyển dụng, dùng bộ quy tắc của
 
 | Thành phần | Vị trí |
 | --- | --- |
-| Repo gốc (vendored, đã bỏ `.git`) | `ai-job-search/` |
+| Bộ quy tắc (rút gọn từ repo gốc) | `knowledge/` · giấy phép: `../../THIRD_PARTY_LICENSES/` |
 | Đọc quy tắc + gọi AI local (Ollama) | `engine.py` |
 | API `/api/cv/status`, `/api/cv/review`, `/api/cv/jobs/<id>` | `api.py`, đăng ký trong `app.py` |
 | Giao diện | `../../static/modules/reviewingcv/reviewingcvModule.js`, đăng ký trong `static/js/main.js` |
 
-Repo gốc là một bộ lệnh cho Claude Code (`/apply`, `/scrape`…), không phải web app. Hub chỉ
-dùng phần quy tắc của nó, đọc trực tiếp lúc khởi động từ
-`ai-job-search/.claude/skills/job-application-assistant/`:
+Repo gốc là một bộ lệnh cho Claude Code, không phải web app. Hub chỉ giữ 3 file quy tắc,
+đọc trực tiếp từ `knowledge/`:
 
 - `04-job-evaluation.md`: cổng điều kiện, cổng ngôn ngữ, 5 tiêu chí chấm, trọng số, ngưỡng
 - `05-cv-templates.md`: sửa từng mục CV, ATS, giới hạn 2 trang, cắt theo mức liên quan
 - `03-writing-style.md`: văn phong (cho đề xuất sửa và thư xin việc)
 
-Cập nhật repo (chép đè thư mục `ai-job-search/`) rồi khởi động lại Hub là cách chấm được cập nhật theo.
+Sửa các file này rồi khởi động lại Hub để đổi cách chấm.
 Điểm tổng và kết luận tính ở server theo trọng số 30/25/15/30 của repo.
 
 ## Cấu hình và kiểm tra chất lượng

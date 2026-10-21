@@ -14,8 +14,12 @@ ADMIN = "tienthanh18082003@gmail.com"
 
 @pytest.fixture(scope="module")
 def app(tmp_path_factory):
-    from core import auth, jobs
+    from core import auth, config, jobs
 
+    cfg = config.get()  # cô lập khỏi data/config.json thật của máy chủ
+    cfg["admin_email"] = ADMIN
+    cfg.pop("admin_password", None)
+    cfg["auto_approve"] = True
     d = tmp_path_factory.mktemp("data")
     auth.USERS_PATH = str(d / "users.json")
     auth.SECRET_PATH = str(d / "secret.key")

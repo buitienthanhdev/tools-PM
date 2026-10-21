@@ -1,5 +1,0 @@
-[flake8]
-ignore = E402, E226, F541, F811
-per-file-ignores =
-    */__init__.py: F401
-

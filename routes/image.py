@@ -9,12 +9,10 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
-from core import auth
+from core import auth, gpu
 from core import config as hubcfg
-from core import gpu
-from core.jobs import UPLOAD_DIR
+from core.jobs import UPLOAD_DIR, jobs, new_job
 from core.jobs import gpu_wait_msg as _gpu_wait_msg
-from core.jobs import jobs, new_job
 from modules.image_ai import model_store as ai_model_store
 
 bp = Blueprint("image", __name__)
@@ -252,7 +250,6 @@ def _run_image_ai(job_id, tool, image_path, mask_path=None, background="transpar
     output_path = UPLOAD_DIR / f"image_ai_{job_id}.png"
     try:
         job = jobs[job_id]
-        model_key = IMAGE_AI_TOOLS[tool][0]
         job.update(status="processing", progress=5, message="Đang chờ tác vụ AI khác...")
         with IMAGE_AI_LOCK:
             if job.get("status") == "cancelled":
@@ -306,6 +303,7 @@ def _run_image_ai(job_id, tool, image_path, mask_path=None, background="transpar
                 import cv2
                 import numpy as np
                 from PIL import Image
+
                 from modules.image_ai import face_restore
 
                 with Image.open(image_path) as source:

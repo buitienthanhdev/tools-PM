@@ -26,7 +26,7 @@ def _tools_health():
         "ok": True,
         "detail": f"đã nạp: {', '.join(speech._wmodel) or 'chưa nạp model nào'}",
     }
-    vox_dir = Path(speech.VOXCPM_APP)
+    vox_dir = Path(__file__).resolve().parent.parent / "voxcpm"
     out["voxcpm"] = {
         "ok": vox_dir.is_dir(),
         "detail": "mã nguồn có sẵn" if vox_dir.is_dir() else "thiếu mã nguồn VoxCPM",

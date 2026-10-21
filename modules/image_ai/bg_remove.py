@@ -10,7 +10,7 @@ import threading
 import numpy as np
 from PIL import Image, ImageFilter
 
-from . import model_store
+from . import model_store, paths
 
 INPUT_SIZE = 1024
 # ImageNet normalization (from the model's preprocessor_config.json)
@@ -44,7 +44,7 @@ def _get_session():
     with _session_lock:
         if _session is None:
             _session = ort.InferenceSession(
-                model_path(), providers=['CPUExecutionProvider']
+                model_path(), providers=paths.ort_providers()
             )
         return _session
 

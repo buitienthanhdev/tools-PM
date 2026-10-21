@@ -13,7 +13,7 @@ for _stream in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
-from flask import Flask
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from core import auth
@@ -29,21 +29,6 @@ try:
         torchaudio.set_audio_backend("soundfile")
 except Exception:
     pass
-
-# Whisper module path
-WHISPER_SRC = os.path.join(BASE_DIR, "modules", "whisper", "whisper-source")
-if os.path.isdir(WHISPER_SRC):
-    sys.path.insert(0, WHISPER_SRC)
-
-# VoxCPM module paths
-VOXCPM_SRC = os.path.join(
-    BASE_DIR, "modules", "voxcpm", "VoxCPM-source", "VoxCPM-main", "src"
-)
-VOXCPM_APP = os.path.join(BASE_DIR, "modules", "voxcpm", "VoxCPM-source", "VoxCPM-main")
-if os.path.isdir(VOXCPM_SRC):
-    sys.path.insert(0, VOXCPM_SRC)
-if os.path.isdir(VOXCPM_APP):
-    sys.path.insert(0, VOXCPM_APP)
 
 # ── FFmpeg ───────────────────────────────────────────────────
 try:
@@ -65,8 +50,34 @@ except Exception as e:
 # ── Flask App ─────────────────────────────────────────────────
 app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = 600 * 1024 * 1024
-CORS(app)
+_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "PM_ALLOWED_ORIGINS",
+        "https://sonxit.io.vn,http://localhost:5000,http://127.0.0.1:5000",
+    ).split(",")
+    if o.strip()
+]
+CORS(app, origins=_ORIGINS, supports_credentials=True)
 auth.init_app(app)
+
+
+@app.before_request
+def _csrf_origin_check():
+    """Chặn CSRF: request ghi dữ liệu có header Origin thì phải thuộc danh sách cho phép."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        origin = request.headers.get("Origin")
+        if origin and origin not in _ORIGINS:
+            return jsonify({"error": "Origin không hợp lệ", "code": "bad_origin"}), 403
+
+
+@app.after_request
+def _security_headers(resp):
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    resp.headers.setdefault("Referrer-Policy", "same-origin")
+    return resp
+
 
 from core.jobs import start_cleanup  # noqa: E402
 from modules.legal_rag.api import bp as legal_bp  # noqa: E402
@@ -91,4 +102,9 @@ if __name__ == "__main__":
     print("  PM Tools Hub — Dev Server")
     print("  http://localhost:5000")
     print("=" * 60)
-    app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
+    app.run(
+        host="127.0.0.1",
+        port=5000,
+        debug=os.environ.get("PM_DEBUG") == "1",
+        threaded=True,
+    )

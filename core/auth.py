@@ -78,6 +78,7 @@ def init_app(app):
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SECURE=os.environ.get("PM_INSECURE_COOKIE") != "1",
         PERMANENT_SESSION_LIFETIME=timedelta(days=14),
     )
     app.register_blueprint(bp)
@@ -90,7 +91,7 @@ def init_app(app):
 def _seed_admin():
     """Tạo sẵn admin từ config (admin_email + admin_password), nếu chưa có."""
     cfg = config.get()
-    pw = cfg.get("admin_password")
+    pw = os.environ.get("PM_ADMIN_PASSWORD") or cfg.get("admin_password")
     if not pw:
         return
     ident = cfg["admin_email"]

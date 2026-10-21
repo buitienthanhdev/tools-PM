@@ -5,7 +5,6 @@ template → GFPGAN restore → inverse-warp and blend back with a feathered
 mask. Runs entirely on CPU through ONNX Runtime / OpenCV.
 """
 
-import os
 import threading
 
 import numpy as np
@@ -47,7 +46,7 @@ def _get_session():
         if _session is None:
             _session = ort.InferenceSession(
                 str(paths.find_model("GFPGANv1.4.onnx")),
-                providers=['CPUExecutionProvider']
+                providers=paths.ort_providers()
             )
         return _session
 

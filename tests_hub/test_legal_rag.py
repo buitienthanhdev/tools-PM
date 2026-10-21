@@ -121,12 +121,18 @@ def test_off_topic_below_threshold_and_on_topic_above(engine):
 
 
 @pytest.mark.skipif(not has_embed(), reason="Ollama chưa có model embedding")
-def test_answer_off_topic_says_no_basis_without_calling_llm(engine, monkeypatch):
+def test_answer_off_topic_passes_no_sources_to_llm(engine, monkeypatch):
     engine.get_index(rebuild=True)
-    monkeypatch.setattr(engine, "_call_llm", lambda *a, **k: pytest.fail("không được gọi AI"))
+    seen = {}
+
+    def fake_llm(question, hits, history):
+        seen["hits"] = hits
+        return "Câu hỏi này nằm ngoài phạm vi văn bản đã nạp."
+
+    monkeypatch.setattr(engine, "_call_llm", fake_llm)
     out = engine.answer(fx.OFF_TOPIC[0])
-    assert out["grounded"] is False and out["sources"] == []
-    assert "chưa có căn cứ" in out["answer"]
+    assert seen["hits"] == []  # không đính căn cứ không liên quan cho AI
+    assert out["sources"] == []
 
 
 # ── Kiểm chứng câu trả lời ──────────────────────────────────

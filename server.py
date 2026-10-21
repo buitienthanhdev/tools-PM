@@ -20,7 +20,7 @@ if __name__ == "__main__":
     print("============================================================")
     serve(
         app,
-        listen="0.0.0.0:5000 [::]:5000",
+        listen="127.0.0.1:5000",
         threads=8,
         channel_timeout=300,
         connection_limit=100,

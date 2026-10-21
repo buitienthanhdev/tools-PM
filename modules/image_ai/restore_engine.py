@@ -13,7 +13,7 @@ import threading
 import numpy as np
 from PIL import Image, ImageFilter
 
-from . import model_store
+from . import model_store, paths
 
 _sessions = {}
 _session_lock = threading.Lock()
@@ -26,7 +26,9 @@ def _get_session(key):
         if key not in _sessions:
             ort.set_default_logger_severity(4)
             _sessions[key] = ort.InferenceSession(
-                model_store.model_path(key), providers=['CPUExecutionProvider']
+                model_store.model_path(key),
+                # NAFNet deblur is int8-quantized: CUDA lacks DequantizeLinear for it.
+                providers=["CPUExecutionProvider"] if key == "deblur" else paths.ort_providers(),
             )
         return _sessions[key]
 

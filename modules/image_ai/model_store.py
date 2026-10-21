@@ -206,9 +206,9 @@ def _download(key):
                 url, headers={"User-Agent": "PM-Tools-Image-AI/1.0"}
             )
             try:
-                import certifi
-
                 import ssl
+
+                import certifi
 
                 context = ssl.create_default_context(cafile=certifi.where())
             except ImportError:

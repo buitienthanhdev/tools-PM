@@ -1,5 +1,5 @@
 tunnel: f8c3bf93-35c2-43ae-86ce-8ad5f4ac25ce
-credentials-file: C:\Users\TIEN THANH\.cloudflared\f8c3bf93-35c2-43ae-86ce-8ad5f4ac25ce.json
+credentials-file: C:\Users\AI SEVER\.cloudflared\f8c3bf93-35c2-43ae-86ce-8ad5f4ac25ce.json
 
 ingress:
   - hostname: sonxit.io.vn

@@ -27,3 +27,18 @@ data/models/
 uploads/
 *.bak_pre_*
 modules/image_enhancer/bin/
+
+backups/
+
+# Môi trường, build, dữ liệu lớn (không đưa lên GitHub)
+.venv/
+node_modules/
+dist/
+.env
+.ruff_cache/
+data/legal/
+data/legal_crawl/
+data/meanwhile.json
+bin/
+.gev-cache/
+.gev-logs/

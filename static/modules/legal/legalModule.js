@@ -5,16 +5,62 @@
 
 import { eventBus } from '../../stores/eventBus.js';
 import { authStore } from '../../stores/authStore.js';
-import { pageHero, panelHead, svgIcon } from '../../components/pageHero.js';
+import { panelHead, svgIcon } from '../../components/pageHero.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function md(s) {
+// Dự phòng khi không tải được thư viện (offline): Markdown tối giản
+function mdBasic(s) {
   return esc(s)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*\w])\*(?!\s)(.+?)(?<!\s)\*(?!\*)/g, '$1<em>$2</em>')
     .replace(/(^|\W)_(.+?)_(?=\W|$)/g, '$1<em>$2</em>')
     .replace(/^\s*[-*] (.+)$/gm, '• $1')
     .replace(/\n/g, '<br>');
+}
+
+// Thư viện Markdown / công thức tải một lần từ CDN (đã ghim phiên bản)
+const CDN = 'https://cdn.jsdelivr.net/npm/';
+let libsPromise = null;
+function loadLibs() {
+  libsPromise ??= (async () => {
+    if (!document.getElementById('lg-katex-css')) {
+      const l = document.createElement('link');
+      l.id = 'lg-katex-css';
+      l.rel = 'stylesheet';
+      l.href = CDN + 'katex@0.16.11/dist/katex.min.css';
+      document.head.appendChild(l);
+    }
+    const [marked, purify, katex] = await Promise.all([
+      import(CDN + 'marked@12.0.2/lib/marked.esm.js'),
+      import(CDN + 'dompurify@3.1.6/dist/purify.es.mjs'),
+      import(CDN + 'katex@0.16.11/dist/katex.mjs'),
+    ]);
+    return { marked: marked.marked, purify: purify.default, katex: katex.default };
+  })().catch((err) => { console.warn('[legal] không tải được thư viện Markdown:', err); return null; });
+  return libsPromise;
+}
+
+/** Markdown (đậm, nghiêng, tiêu đề, danh sách, bảng, code, trích dẫn) + công thức LaTeX → HTML an toàn */
+async function renderRich(text) {
+  const libs = await loadLibs();
+  if (!libs) return mdBasic(text);
+  const { marked, purify, katex } = libs;
+  const codes = [];
+  const maths = [];
+  const keepMath = (tex, display) => `M${maths.push({ tex, display }) - 1}`;
+  let t = String(text ?? '')
+    .replace(/```[\s\S]*?```|`[^`\n]+`/g, (m) => `C${codes.push(m) - 1}`)
+    .replace(/\$\$([\s\S]+?)\$\$/g, (m, x) => keepMath(x, true))
+    .replace(/\\\[([\s\S]+?)\\\]/g, (m, x) => keepMath(x, true))
+    .replace(/\\\(([\s\S]+?)\\\)/g, (m, x) => keepMath(x, false))
+    .replace(/(?<![\\$\d])\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)/g, (m, x) => keepMath(x, false))
+    .replace(/C(\d+)/g, (m, i) => codes[i]);
+  const html = purify.sanitize(marked.parse(t, { gfm: true, breaks: true }));
+  return html.replace(/M(\d+)/g, (m, i) => {
+    const { tex, display } = maths[i];
+    return katex.renderToString(tex, { displayMode: display, throwOnError: false, output: 'html' });
+  });
 }
 
 const toast = (message, type = 'info') => eventBus.emit('toast:show', { message, type });
@@ -30,34 +76,37 @@ export const legalModule = {
 
   _s: { history: [], busy: false, adminKey: '', taps: 0, tapTimer: null },
 
+  unmount() {
+    this._viewport?.classList.remove('lg-full');
+    if (this._onKey) { document.removeEventListener('keydown', this._onKey); this._onKey = null; }
+  },
+
   render(el) {
     const s = this._s;
     s.history = [];
     s.busy = false;
     try { s.adminKey = sessionStorage.getItem('legalAdminKey') || ''; } catch { s.adminKey = ''; }
 
-    el.innerHTML = `
-    ${pageHero(this, {
-      title: 'Hỏi đáp pháp luật <span class="thin">có căn cứ</span> điều luật',
-      sub: 'Đặt câu hỏi bằng lời thường. AI tra cứu trong các văn bản luật đã nạp và trả lời kèm điều khoản cụ thể để bạn đối chiếu.',
-      word: 'Legal',
-      meta: ['Trích dẫn điều luật', 'Tiếng Việt', 'Tham khảo'],
-    })}
+    // Chat chiếm trọn vùng làm việc, khóa cuộn trang: chỉ danh sách tin nhắn bên trong được cuộn
+    this._viewport = el.closest('.workspace-container');
+    this._viewport?.classList.add('lg-full');
+    loadLibs(); // tải trước
 
-    <div class="mp-body" style="max-width:1080px;">
-      <div class="mp-panel flex lg-chat">
-        <div class="mp-head">
-          <span class="mp-num" id="lg-logo" style="cursor:default;user-select:none">01</span>
-          <h3>Trợ lý <span class="thin">pháp luật</span></h3>
-          <div class="mp-actions"><span class="badge-tag badge-active">Trực tuyến</span></div>
-        </div>
-        <div id="lg-msgs" class="lg-msgs"></div>
+    el.innerHTML = `
+    <div class="lg-shell">
+      <div class="lg-top">
+        <span class="mp-num" id="lg-logo" style="cursor:default;user-select:none">01</span>
+        <h3>Trợ lý <span class="thin">pháp luật</span></h3>
+        <div class="mp-actions"><span class="badge-tag badge-active">Trực tuyến</span></div>
+      </div>
+      <div id="lg-msgs" class="lg-msgs"><div class="lg-col" id="lg-col"></div></div>
+      <div class="lg-foot">
         <form id="lg-form" class="lg-compose">
-          <textarea class="form-textarea" id="lg-input" rows="2"
+          <textarea id="lg-input" rows="1"
             placeholder="Ví dụ: Người lao động nghỉ việc không báo trước thì bị xử lý thế nào?"></textarea>
-          <button class="btn btn-primary" id="lg-send" type="submit">${svgIcon('send', 16, 2)} Gửi</button>
+          <button class="lg-send" id="lg-send" type="submit" title="Gửi (Enter)">${svgIcon('send', 18, 2)}</button>
         </form>
-        <div class="mp-hint" style="margin:0;">${svgIcon('alert', 15, 2)}<span>Câu trả lời chỉ mang tính tham khảo, không thay thế tư vấn của luật sư.</span></div>
+        <div class="lg-disclaimer">${svgIcon('alert', 14, 2)}<span>Câu trả lời chỉ mang tính tham khảo, không thay thế tư vấn của luật sư.</span></div>
       </div>
     </div>
 
@@ -91,6 +140,50 @@ export const legalModule = {
 
     const $ = (id) => el.querySelector('#' + id);
     const msgs = $('lg-msgs');
+    const col = $('lg-col');
+    const input = $('lg-input');
+
+    const toBottom = () => { msgs.scrollTop = msgs.scrollHeight; };
+    const autoGrow = () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 200) + 'px'; };
+    input.addEventListener('input', autoGrow);
+
+    const copyText = async (text, btn) => {
+      try { await navigator.clipboard.writeText(text); btn.textContent = 'Đã chép'; }
+      catch { btn.textContent = 'Lỗi'; }
+      setTimeout(() => { btn.textContent = btn.dataset.label; }, 1400);
+    };
+    const addCopyButton = (host, label, getText, cls = 'lg-copy') => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = cls;
+      b.dataset.label = b.textContent = label;
+      b.addEventListener('click', () => copyText(getText(), b));
+      host.appendChild(b);
+    };
+
+    // [1] → chú thích nhỏ bấm được (bỏ qua công thức và code)
+    const linkCitations = (root, sources) => {
+      const nums = new Set(sources.map((x) => x.n));
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: (n) => (n.parentElement.closest('.katex, pre, code') ? NodeFilter.FILTER_REJECT : /\[\d{1,2}\]/.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+      });
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      nodes.forEach((node) => {
+        const frag = document.createDocumentFragment();
+        node.nodeValue.split(/(\[\d{1,2}\])/).forEach((part) => {
+          const m = part.match(/^\[(\d{1,2})\]$/);
+          if (m && nums.has(+m[1])) {
+            const sup = document.createElement('sup');
+            sup.className = 'lg-cite';
+            sup.dataset.n = m[1];
+            sup.textContent = m[1];
+            frag.appendChild(sup);
+          } else frag.appendChild(document.createTextNode(part));
+        });
+        node.replaceWith(frag);
+      });
+    };
 
     const refLabel = (x) => `${esc(x.law)} — ${x.article ? `Điều ${esc(x.article)}. ${esc(x.title)}` : 'Trích đoạn'}${x.clause ? ` (khoản ${esc(x.clause)})` : ''}`;
 
@@ -99,24 +192,40 @@ export const legalModule = {
       const user = role === 'user';
       const sources = meta.sources || [];
       d.className = `lg-bubble ${user ? 'is-user' : 'is-bot'}`;
-      // [1] → chú thích nhỏ bấm được, mở và làm nổi căn cứ tương ứng
-      d.innerHTML = user ? html : html.replace(/\[(\d{1,2})\]/g, (m, n) => (sources.some((x) => x.n === +n) ? `<sup class="lg-cite" data-n="${n}">${n}</sup>` : m));
+      const body = document.createElement('div');
+      body.className = user ? 'lg-text' : 'lg-md';
+      body.innerHTML = html;
+      d.appendChild(body);
+      if (!user) {
+        linkCitations(body, sources);
+        body.querySelectorAll('a').forEach((a) => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+        body.querySelectorAll('pre').forEach((pre) => {
+          const head = document.createElement('div');
+          head.className = 'lg-codehead';
+          head.innerHTML = `<span>${esc(pre.querySelector('code')?.className.replace(/^.*language-/, '') || 'code')}</span>`;
+          addCopyButton(head, 'Sao chép', () => pre.querySelector('code')?.innerText ?? pre.innerText);
+          pre.prepend(head);
+        });
+        body.querySelectorAll('table').forEach((t) => {
+          const w = document.createElement('div');
+          w.className = 'lg-tablewrap';
+          t.replaceWith(w);
+          w.appendChild(t);
+        });
+      }
 
       const notes = [];
-      if (!user && meta.query) notes.push(`Đã hiểu câu hỏi là: “${esc(meta.query)}”`);
-      if (!user && sources.length && meta.grounded === false) notes.push('⚠ AI chưa trích dẫn căn cứ cụ thể cho câu trả lời này — hãy đối chiếu các điều luật bên dưới.');
-      if (!user && meta.unverified_articles?.length) notes.push(`⚠ Câu trả lời nhắc tới Điều ${meta.unverified_articles.map(esc).join(', ')} không nằm trong căn cứ đã tìm được — cần kiểm tra lại.`);
-      if (!user && meta.ai_error) notes.push(`⚠ AI local không trả lời được (${esc(meta.ai_error)}); chỉ hiển thị điều luật liên quan nhất.`);
-      notes.forEach((t) => { const n = document.createElement('div'); n.className = 'lg-note'; n.innerHTML = t; d.appendChild(n); });
+      if (!user && meta.unverified_articles?.length) notes.push(`Lưu ý: Điều ${meta.unverified_articles.map(esc).join(', ')} nhắc trong câu trả lời chưa có trong căn cứ tìm được, bạn nên kiểm tra lại.`);
+      if (!user && meta.ai_error) notes.push('AI đang bận nên mình chỉ hiển thị điều luật gần nhất.');
+      notes.forEach((t) => { const n = document.createElement('div'); n.className = 'lg-note'; n.textContent = t; d.appendChild(n); });
 
       if (sources.length) {
         const src = document.createElement('details');
         src.className = 'lg-sources';
-        src.innerHTML = `<summary>Căn cứ pháp lý (${sources.length}${meta.mode === 'hybrid' ? ' · tìm kiếm lai' : ''})</summary>` +
+        src.innerHTML = `<summary>Xem điều luật được dẫn (${sources.length})</summary>` +
           sources.map((x) => `<div data-src="${x.n}" class="${x.cited ? 'is-cited' : ''}">
-            <strong><span class="lg-n">${x.n}</span> ${refLabel(x)}</strong>${x.cited ? ' <em>được trích dẫn</em>' : ''}
-            ${x.chapter ? `<small>${esc(x.chapter)}</small>` : ''}<br>${esc(x.excerpt)}…
-            ${x.similarity != null ? `<small>Độ liên quan ${Math.round(x.similarity * 100)}%</small>` : ''}</div>`).join('');
+            <strong><span class="lg-n">${x.n}</span> ${refLabel(x)}</strong>
+            ${x.chapter ? `<small>${esc(x.chapter)}</small>` : ''}<br>${esc(x.excerpt)}…</div>`).join('');
         d.appendChild(src);
         d.querySelectorAll('.lg-cite').forEach((c) => c.addEventListener('click', () => {
           src.open = true;
@@ -126,22 +235,40 @@ export const legalModule = {
           target?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }));
       }
-      msgs.appendChild(d);
-      msgs.scrollTop = msgs.scrollHeight;
+      if (!user && meta.raw) {
+        const bar = document.createElement('div');
+        bar.className = 'lg-actions';
+        addCopyButton(bar, 'Sao chép câu trả lời', () => meta.raw, 'lg-copy lg-copy-all');
+        d.appendChild(bar);
+      }
+      col.appendChild(d);
+      toBottom();
       return d;
     };
 
-    bubble('assistant', md('Xin chào! Tôi là trợ lý tư vấn pháp luật. Bạn cứ hỏi, tôi sẽ trả lời kèm căn cứ điều luật cụ thể nhé.'));
+    const welcome = bubble('assistant', mdBasic('Xin chào! Mình là trợ lý pháp luật của Anh Thành đẹp troai. Bạn đang thắc mắc điều gì cứ hỏi nhé 😊'));
+    const chips = document.createElement('div');
+    chips.className = 'lg-chips';
+    ['Người lao động nghỉ việc không báo trước thì bị xử lý thế nào?', 'Mức phạt khi không đội mũ bảo hiểm là bao nhiêu?', 'Thời hạn thử việc tối đa theo luật là bao lâu?'].forEach((t) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = t;
+      b.addEventListener('click', () => { input.value = t; $('lg-form').requestSubmit(); });
+      chips.appendChild(b);
+    });
+    welcome.appendChild(chips);
 
     $('lg-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const q = $('lg-input').value.trim();
+      const q = input.value.trim();
       if (!q || s.busy) return;
       s.busy = true;
       $('lg-send').disabled = true;
-      $('lg-input').value = '';
+      input.value = '';
+      autoGrow();
+      chips.remove();
       bubble('user', esc(q));
-      const wait = bubble('assistant', '<span class="lg-typing"><i></i><i></i><i></i></span> Đang tra cứu điều luật…');
+      const wait = bubble('assistant', '<span class="lg-typing"><i></i><i></i><i></i></span> Đang suy nghĩ…');
       try {
         const res = await fetch('/api/legal/chat', {
           method: 'POST',
@@ -150,8 +277,9 @@ export const legalModule = {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        const html = await renderRich(data.answer);
         wait.remove();
-        bubble('assistant', md(data.answer), data);
+        bubble('assistant', html, { ...data, raw: data.answer });
         s.history.push({ role: 'user', content: q }, { role: 'assistant', content: data.answer });
       } catch (err) {
         wait.innerHTML = 'Lỗi: ' + esc(err.message);
@@ -160,9 +288,10 @@ export const legalModule = {
         $('lg-send').disabled = false;
       }
     });
-    $('lg-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('lg-form').requestSubmit(); }
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('lg-form').requestSubmit(); }
     });
+    input.focus();
 
     // ── Admin (ẩn) ──
     const adminFetch = async (path, opts = {}) => {
