@@ -22,6 +22,7 @@ export class Inspector {
 
   close() {
     this.shell.classList.add('no-inspector');
+    this.shell.classList.remove('insp-wide');
     this.current = null;
   }
 
@@ -29,9 +30,10 @@ export class Inspector {
     this.shell.classList.remove('no-inspector');
     this.el.innerHTML = `
       <div class="ac-insp-head"><h3 title="${esc(title)}">${esc(title)}</h3>
-        <div class="ac-actions">${actions || ''}<button class="ac-icon-btn" data-x title="Đóng">${svgIcon('x', 16, 2)}</button></div></div>
+        <div class="ac-actions">${actions || ''}<button class="ac-icon-btn ac-wide-btn" data-wide title="Mở rộng / thu hẹp">${svgIcon('arrow', 15, 2)}</button><button class="ac-icon-btn" data-x title="Đóng">${svgIcon('x', 16, 2)}</button></div></div>
       <div class="ac-insp-body">${body}</div>`;
     this.el.querySelector('[data-x]').onclick = () => this.close();
+    this.el.querySelector('[data-wide]').onclick = () => this.shell.classList.toggle('insp-wide');
     return this.el.querySelector('.ac-insp-body');
   }
 
@@ -165,7 +167,11 @@ export class Inspector {
       const dl = `<a class="btn btn-primary btn-xs" href="/api/accounting/o/${org}/artifacts/${a.id}/download">${svgIcon('download', 14, 2)} ${a.kind.toUpperCase()}</a>`;
       const ver = a.versions.length > 1 ? `<select class="ac-select" data-ver>${a.versions.map((v) =>
         `<option value="${v.id}" ${v.id === a.id ? 'selected' : ''}>Phiên bản ${v.version} (${v.kind})</option>`).join('')}</select>` : '';
-      let sheet = Math.max(0, pv.sheets.findIndex((s) => s.name === opts.sheet));
+      // Mặc định mở sheet kết quả chính (không phải sheet tóm tắt/kỹ thuật); báo cáo nhiều sheet mở rộng panel
+      const META = ['Tóm tắt', 'Chứng từ', 'Trích xuất'];
+      let sheet = opts.sheet ? pv.sheets.findIndex((s) => s.name === opts.sheet) : pv.sheets.findIndex((s) => !META.includes(s.name));
+      if (sheet < 0) sheet = 0;
+      if (opts.wide && a.kind === 'xlsx') this.shell.classList.add('insp-wide');
       const body = this.frame(a.name, dl, `
         <div class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           ${a.validation?.ok ? '<span class="ac-status ok">Đã tự xác minh</span>' : '<span class="ac-status bad">Chưa qua xác minh</span>'}

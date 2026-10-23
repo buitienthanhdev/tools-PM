@@ -581,6 +581,38 @@ def audit_verify(ctx):
     return jsonify({"ok": ok, "first_bad_seq": bad, "events": n})
 
 
+@bp.route("/o/<org_id>/overview")
+@org_route("read")
+def overview(ctx):
+    """Số liệu cho màn hình Tổng quan — chỉ đọc, từ bản trích xuất hiện hành."""
+    o = ctx.org_id
+    n = lambda sql, *a: db.one(sql, (o, *a))["n"]  # noqa: E731
+    week = db.now() - 7 * 86400
+    inv = {r["status"]: r["n"] for r in db.all_("SELECT status, count(*) n FROM cur_invoices WHERE org_id=? GROUP BY status", (o,))}
+    recent_tasks = db.all_("""SELECT t.id, t.conversation_id, t.command, t.status, t.created_at, c.title FROM tasks t
+                              LEFT JOIN conversations c ON c.id=t.conversation_id WHERE t.org_id=? ORDER BY t.created_at DESC LIMIT 8""", (o,))
+    recent_arts = db.all_("""SELECT a.id, a.name, a.kind, a.version, a.created_at, a.conversation_id FROM artifacts a WHERE a.org_id=?
+                             AND a.version=(SELECT max(version) FROM artifacts b WHERE b.root_id=a.root_id) ORDER BY a.created_at DESC LIMIT 6""", (o,))
+    return jsonify({
+        "org": db.one("SELECT name, tax_id, base_currency FROM orgs WHERE id=?", (o,)),
+        "files": n("SELECT count(*) n FROM files WHERE org_id=? AND kind!='zip'"),
+        "files_7d": n("SELECT count(*) n FROM files WHERE org_id=? AND kind!='zip' AND uploaded_at>?", week),
+        "invoices": {"total": sum(inv.values()), "by_status": inv},
+        "bank_txns": n("SELECT count(*) n FROM cur_bank_transactions WHERE org_id=?"),
+        "ledger_entries": n("SELECT count(*) n FROM cur_imported_entries WHERE org_id=?"),
+        "tables": n("SELECT count(*) n FROM cur_documents WHERE org_id=? AND doc_type='table'"),
+        "reviews_open": n("SELECT count(*) n FROM review_items WHERE org_id=? AND status='OPEN'"),
+        "approvals_pending": n("SELECT count(*) n FROM approvals WHERE org_id=? AND status='PENDING'"),
+        "journal": {"proposed": n("SELECT count(*) n FROM journal_entries WHERE org_id=? AND status='PROPOSED'"),
+                    "posted": n("SELECT count(*) n FROM journal_entries WHERE org_id=? AND status='POSTED'")},
+        "tasks": {"total": n("SELECT count(*) n FROM tasks WHERE org_id=?"),
+                  "running": n("SELECT count(*) n FROM tasks WHERE org_id=? AND status IN ('QUEUED','RUNNING','RETRY_SCHEDULED','VERIFYING')"),
+                  "week": n("SELECT count(*) n FROM tasks WHERE org_id=? AND created_at>?", week)},
+        "artifacts": n("SELECT count(DISTINCT root_id) n FROM artifacts WHERE org_id=?"),
+        "recent_tasks": recent_tasks, "recent_artifacts": recent_arts,
+    })
+
+
 @bp.route("/o/<org_id>/review-count")
 @org_route("read")
 def review_count(ctx):

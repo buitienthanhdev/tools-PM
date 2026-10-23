@@ -5,6 +5,7 @@
  */
 
 import { svgIcon } from '../../components/icons.js';
+import { authStore } from '../../stores/authStore.js';
 import { eventBus } from '../../stores/eventBus.js';
 import { api, ApiError, bytes, date, esc, money, status, TERMINAL, uploadFiles, when } from './api.js';
 import { Inspector } from './inspector.js';
@@ -21,8 +22,23 @@ const SUGGESTIONS = [
   'Lập bảng công nợ phải thu, phải trả và tuổi nợ',
 ];
 
+const QUICK = [
+  ['file', 'Kiểm tra hoá đơn', 'XML/PDF/ảnh: trường bắt buộc, thuế GTGT, trùng lặp, tổng hợp theo nhà cung cấp',
+    'Kiểm tra tất cả hoá đơn, phát hiện trùng lặp, tổng hợp theo nhà cung cấp và xuất báo cáo Excel'],
+  ['refresh', 'Đối soát ngân hàng', 'Sao kê ↔ sổ tiền gửi: khớp, mơ hồ, chưa khớp, chênh lệch',
+    'Đối soát sao kê ngân hàng với sổ tiền gửi, tìm khoản chưa khớp và tạo báo cáo sai lệch'],
+  ['calendar', 'Thu chi theo tháng', 'Gộp sổ quỹ và bảng doanh thu, so sánh theo tháng, có biểu đồ',
+    'So sánh thu chi và doanh thu theo tháng, tạo dashboard Excel'],
+  ['sliders', 'Kiểm tra công thức Excel', '#REF!, SUM bỏ sót dòng, tổng nhập tay, giá trị lưu sai', 'Kiểm tra file Excel có công thức sai không'],
+  ['book', 'Đề xuất định khoản', 'Nợ/Có từ hoá đơn đã kiểm tra — chỉ đề xuất, ghi sổ cần phê duyệt', 'Tự động định khoản các hoá đơn'],
+  ['alert', 'Công nợ & tuổi nợ', 'Phải thu/phải trả theo đối tượng, trừ khoản đã thanh toán khớp',
+    'Lập bảng công nợ phải thu, phải trả và tuổi nợ'],
+  ['grid', 'Thống kê danh sách', 'Danh sách bất kỳ: số dòng, giá trị khác nhau, phân bố theo cột',
+    'Thống kê danh sách này: có bao nhiêu dòng, phân bố theo từng cột'],
+];
+
 const NAV = [
-  ['workspace', 'Phiên làm việc', 'spark'], ['files', 'Chứng từ', 'file'], ['reports', 'Báo cáo', 'grid'],
+  ['overview', 'Tổng quan', 'grid'], ['workspace', 'Phiên làm việc', 'spark'], ['files', 'Chứng từ', 'file'], ['reports', 'Báo cáo', 'grid'],
   ['reviews', 'Kiểm duyệt', 'alert'], ['approvals', 'Phê duyệt', 'check'], ['ledger', 'Sổ sách', 'book'],
   ['rules', 'Quy tắc & tài khoản', 'sliders'], ['audit', 'Nhật ký kiểm toán', 'lock'], ['settings', 'Cài đặt', 'refresh'],
 ];
@@ -61,7 +77,7 @@ export const accountingModule = {
   async render(el) {
     this.unmount();
     loadCss();
-    const s = (this.s = { el, polls: {}, view: 'workspace', conv: null, convs: [], tasks: {}, counts: {}, attach: [], uploading: null });
+    const s = (this.s = { el, polls: {}, view: 'overview', conv: null, convs: [], tasks: {}, counts: {}, attach: [], uploading: null });
     s.viewport = el.closest('.workspace-container');
     s.viewport?.classList.add('ac-full');
     el.innerHTML = '<div class="ac-empty"><p>Đang mở Kế toán AI…</p></div>';
@@ -93,7 +109,8 @@ export const accountingModule = {
     <div class="ac-shell no-inspector">
       <aside class="ac-nav">
         <div class="ac-org"><label for="ac-org">Tổ chức</label>
-          <select id="ac-org">${s.orgs.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}<option value="__new">+ Tạo tổ chức mới…</option></select></div>
+          <select id="ac-org">${s.orgs.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}<option value="__new">+ Tạo tổ chức mới…</option></select>
+          <div class="ac-org-meta" id="ac-orgmeta"></div></div>
         <div class="ac-new"><button class="btn btn-primary btn-sm" id="ac-newconv">${svgIcon('plus', 15, 2)} Phiên làm việc mới</button></div>
         <ul class="ac-navlist">${NAV.map(([id, label, icon]) => `<li><button data-view="${id}">${svgIcon(icon, 16, 2)}<span>${label}</span><span class="ac-badge muted" data-count="${id}" hidden></span></button></li>`).join('')}</ul>
         <div class="ac-convs"><h4>Gần đây</h4><div id="ac-convlist"></div></div>
@@ -143,6 +160,11 @@ export const accountingModule = {
     const s = this.s;
     s.el.querySelector('#ac-org').value = s.org;
     s.el.querySelector('[data-view="audit"]').parentElement.hidden = !this.can('audit');
+    const org = s.orgs.find((o) => o.id === s.org);
+    s.el.querySelector('#ac-orgmeta').innerHTML = org?.tax_id
+      ? `<span class="ac-dot ok"></span>MST ${esc(org.tax_id)}`
+      : '<button class="ac-linkbtn" data-set-tax type="button"><span class="ac-dot warn"></span>Chưa khai báo MST</button>';
+    s.el.querySelector('[data-set-tax]')?.addEventListener('click', () => this.go('settings'));
     await Promise.all([this.loadConvs(), this.counts()]);
     this.go(s.view);
   },
@@ -171,8 +193,9 @@ export const accountingModule = {
   go(view) {
     const s = this.s;
     s.view = view;
+    s.shellEl?.classList.remove('insp-wide');  // đổi màn hình: trả khung chính về độ rộng đủ dùng
     s.el.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
-    const fn = { workspace: 'viewWorkspace', files: 'viewFiles', reports: 'viewReports', reviews: 'viewReviews', approvals: 'viewApprovals',
+    const fn = { overview: 'viewOverview', workspace: 'viewWorkspace', files: 'viewFiles', reports: 'viewReports', reviews: 'viewReviews', approvals: 'viewApprovals',
       ledger: 'viewLedger', rules: 'viewRules', audit: 'viewAudit', settings: 'viewSettings' }[view];
     this[fn]();
   },
@@ -183,6 +206,94 @@ export const accountingModule = {
       <h2>${esc(title)}</h2>${sub ? `<span class="ac-sub">${sub}</span>` : ''}<div class="ac-actions">${actions || ''}</div></div>${body}`;
     m.querySelector('#ac-menu').onclick = () => this.s.shellEl.classList.add('nav-open');
     return m;
+  },
+
+  // ════════════════════ Tổng quan ════════════════════
+  async viewOverview() {
+    const s = this.s;
+    const m = this.main('Tổng quan', '', `<button class="btn btn-primary btn-xs" id="ac-ov-new">${svgIcon('plus', 14, 2)} Phiên làm việc mới</button>`,
+      '<div class="ac-scroll"><div class="ac-pad"><div class="ac-ov" id="ac-body"><div class="ac-note">Đang tải…</div></div></div></div>' +
+      `<div class="ac-drop" id="ac-drop"><div>${svgIcon('upload', 34, 1.6)}<b>Thả để bắt đầu một phiên làm việc mới</b></div></div>`);
+    m.querySelector('#ac-ov-new').onclick = () => this.startSession();
+    let d;
+    try { d = await api(`/o/${s.org}/overview`); } catch (e) {
+      m.querySelector('#ac-body').innerHTML = `<div class="ac-alert bad">${esc(e.message)}</div>`;
+      return;
+    }
+    if (this.s !== s || s.view !== 'overview') return;
+    const inv = d.invoices.by_status || {};
+    const okN = (inv.VERIFIED || 0) + (inv.VALID_EXTRACTED || 0) + (inv.REVIEWED || 0);
+    const warnN = (inv.NEEDS_REVIEW || 0) + (inv.NEEDS_EVIDENCE || 0);
+    const badN = inv.CONFLICTED || 0;
+    const seg = (n, cls, label) => (n ? `<i class="${cls}" style="flex:${n}" title="${label}: ${n}"></i>` : '');
+    const name = authStore.user?.name || authStore.user?.email || '';
+    const num = (n) => Number(n || 0).toLocaleString('vi-VN');
+    const tile = (label, value, sub, view) => `<button class="ac-kpi link" data-goview="${view}" type="button">
+      <span class="ac-kpi-label">${label}</span><span class="ac-kpi-value">${num(value)}</span><span class="ac-kpi-sub">${sub}</span></button>`;
+    const body = m.querySelector('#ac-body');
+    body.innerHTML = `
+      <section class="ac-ov-hero">
+        <div><span class="ac-eyebrow">${esc(d.org.name)}</span>
+          <h1>Xin chào${name ? `, ${esc(name)}` : ''}</h1>
+          <p>Kéo thả chứng từ và giao việc bằng tiếng Việt — AI đọc, kiểm tra, đối soát và lập báo cáo truy vết tới chứng từ gốc.</p></div>
+        <button class="ac-dropcard compact" data-ov-pick type="button"><span class="ac-dropcard-ic">${svgIcon('upload', 24, 1.8)}</span>
+          <b>Kéo thả hoặc chọn chứng từ</b><span>bắt đầu phiên làm việc mới</span></button>
+        <input type="file" id="ac-ov-file" multiple hidden />
+      </section>
+      ${!d.org.tax_id ? `<div class="ac-alert">Chưa khai báo <b>mã số thuế</b> của tổ chức — hệ thống sẽ không phân biệt hoá đơn mua vào / bán ra.
+        <button class="btn btn-secondary btn-xs" data-goview="settings" style="margin-left:6px">Khai báo</button></div>` : ''}
+      <section class="ac-kpis">
+        ${tile('Chứng từ', d.files, d.files_7d ? `+${num(d.files_7d)} trong 7 ngày` : 'bản gốc lưu bất biến', 'files')}
+        <button class="ac-kpi link" data-goview="files" type="button"><span class="ac-kpi-label">Hoá đơn</span>
+          <span class="ac-kpi-value">${num(d.invoices.total)}</span>
+          ${d.invoices.total ? `<span class="ac-statbar" role="img" aria-label="${okN} đã kiểm tra, ${warnN} cần xem, ${badN} mâu thuẫn">${seg(okN, 'ok', 'Đã kiểm tra')}${seg(warnN, 'warn', 'Cần xem')}${seg(badN, 'bad', 'Mâu thuẫn')}</span>
+          <span class="ac-legend"><span><span class="ac-dot ok"></span>${okN} đã kiểm tra</span><span><span class="ac-dot warn"></span>${warnN} cần xem</span>${badN ? `<span><span class="ac-dot bad"></span>${badN} mâu thuẫn</span>` : ''}</span>`
+            : '<span class="ac-kpi-sub">chưa có hoá đơn</span>'}</button>
+        ${tile('Chờ kiểm duyệt', d.reviews_open, d.reviews_open ? 'điểm AI không tự kết luận' : 'không có việc tồn', 'reviews')}
+        ${tile('Chờ phê duyệt ghi sổ', d.approvals_pending, `${num(d.journal.posted)} bút toán đã ghi sổ`, 'approvals')}
+        ${tile('Báo cáo', d.artifacts, `${num(d.tasks.week)} tác vụ trong 7 ngày${d.tasks.running ? ` · ${d.tasks.running} đang chạy` : ''}`, 'reports')}
+      </section>
+      <p class="ac-inventory">Dữ liệu đã nhận diện: <b>${num(d.bank_txns)}</b> giao dịch sao kê · <b>${num(d.ledger_entries)}</b> dòng sổ ·
+        <b>${num(d.tables)}</b> bảng dữ liệu · <b>${num(d.journal.proposed)}</b> bút toán đề xuất</p>
+      <section><div class="ac-section-title"><h3>Bắt đầu nhanh</h3><span>chọn nghiệp vụ → kéo thả file → gửi</span></div>
+        <div class="ac-actions-grid">${QUICK.map((q, i) => `<button class="ac-action" data-quick="${i}" type="button">
+          <span class="ac-action-ic">${svgIcon(q[0], 18, 2)}</span><b>${esc(q[1])}</b><span>${esc(q[2])}</span></button>`).join('')}</div></section>
+      <section class="ac-ov-cols">
+        <div><div class="ac-section-title"><h3>Phiên gần đây</h3></div>
+          ${d.recent_tasks.length ? `<div class="ac-list">${d.recent_tasks.map((t) => `<button class="ac-row" data-conv="${t.conversation_id || ''}" type="button">
+            ${status(t.status)}<span class="t">${esc(t.command)}</span><span class="w">${when(t.created_at)}</span></button>`).join('')}</div>`
+            : '<p class="ac-note">Chưa có phiên nào — chọn một nghiệp vụ ở trên để bắt đầu.</p>'}</div>
+        <div><div class="ac-section-title"><h3>Báo cáo gần đây</h3></div>
+          ${d.recent_artifacts.length ? `<div class="ac-list">${d.recent_artifacts.map((a) => `<button class="ac-row" data-art="${a.id}" type="button">
+            <span class="ac-file-ic">${svgIcon(a.kind === 'pdf' ? 'file' : 'grid', 15, 2)}</span><span class="t">${esc(a.name)}</span><span class="w">v${a.version} · ${when(a.created_at)}</span></button>`).join('')}</div>`
+            : '<p class="ac-note">Báo cáo Excel/PDF do AI tạo sẽ xuất hiện ở đây.</p>'}</div>
+      </section>`;
+    body.querySelectorAll('[data-goview]').forEach((b) => (b.onclick = () => this.go(b.dataset.goview)));
+    body.querySelectorAll('[data-quick]').forEach((b) => (b.onclick = () => this.startSession(QUICK[+b.dataset.quick][3])));
+    body.querySelectorAll('[data-conv]').forEach((b) => (b.onclick = () => b.dataset.conv && this.openConv(b.dataset.conv)));
+    body.querySelectorAll('[data-art]').forEach((b) => (b.onclick = () => s.insp.artifact(b.dataset.art, { wide: true })));
+    const fileIn = body.querySelector('#ac-ov-file');
+    body.querySelector('[data-ov-pick]').onclick = () => fileIn.click();
+    fileIn.onchange = () => { const f = [...fileIn.files]; fileIn.value = ''; this.startSession(null, f); };
+    const drop = m.querySelector('#ac-drop');
+    let depth = 0;
+    m.addEventListener('dragenter', (e) => { if (e.dataTransfer?.types?.includes('Files')) { depth++; drop.classList.add('on'); e.preventDefault(); } });
+    m.addEventListener('dragover', (e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); });
+    m.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) drop.classList.remove('on'); });
+    m.addEventListener('drop', (e) => {
+      e.preventDefault(); depth = 0; drop.classList.remove('on');
+      if (e.dataTransfer?.files?.length) this.startSession(null, [...e.dataTransfer.files]);
+    });
+  },
+
+  /** Mở phiên mới (tuỳ chọn điền sẵn lệnh và/hoặc tải file ngay). */
+  startSession(command = null, files = null) {
+    const s = this.s;
+    s.conv = null;
+    s.attach = [];
+    s.prefill = command;
+    this.go('workspace');
+    if (files?.length) this.addFiles(files);
   },
 
   // ════════════════════ Workspace (hội thoại) ════════════════════
@@ -220,6 +331,13 @@ export const accountingModule = {
     this.renderFeed();
     this.renderAttach();
     this.bindCompose(m);
+    if (s.prefill) {
+      const i = m.querySelector('#ac-input');
+      i.value = s.prefill;
+      autosize(i);
+      i.focus();
+      s.prefill = null;
+    }
   },
 
   convFiles() {
@@ -240,11 +358,19 @@ export const accountingModule = {
     const taxNote = !org?.tax_id ? `<div class="ac-alert" style="margin-bottom:6px">Tổ chức chưa khai báo <b>mã số thuế</b> — hệ thống sẽ không phân biệt được hoá đơn mua vào / bán ra.
       <button class="btn btn-secondary btn-xs" data-goto-settings style="margin-left:6px">Khai báo trong Cài đặt</button></div>` : '';
     if (!c || !c.messages.length) {
-      feed.innerHTML = `${taxNote}<div class="ac-empty"><h3>Kéo thả chứng từ, rồi ra lệnh</h3>
-        <p>Hoá đơn PDF/XML, ảnh chụp, sao kê ngân hàng, sổ sách Excel, CSV, ZIP… AI đọc dữ liệu, lập kế hoạch, dùng công cụ tính toán chính xác,
-        tự kiểm tra kết quả và trả về báo cáo có thể mở tới từng chứng từ gốc. Việc ghi sổ luôn cần người phê duyệt.</p>
+      const attached = s.conv?.files?.length || 0;
+      feed.innerHTML = `${taxNote}<button class="ac-dropcard" data-pick type="button">
+          <span class="ac-dropcard-ic">${svgIcon('upload', 26, 1.8)}</span>
+          <b>${attached ? `Đã có ${attached} chứng từ — thêm file hoặc nhập yêu cầu bên dưới` : 'Kéo thả chứng từ vào đây hoặc bấm để chọn file'}</b>
+          <span>Hoá đơn XML/PDF/ảnh · sao kê · sổ quỹ · Excel · CSV · DOCX · ZIP — tối đa ${s.status.limits.max_file_mb} MB/file</span>
+          <span class="ac-fmt">${['XML', 'PDF', 'JPG/PNG', 'XLSX', 'CSV', 'DOCX', 'ZIP'].map((x) => `<i>${x}</i>`).join('')}</span>
+        </button>
+        <div class="ac-empty" style="padding-top:22px"><h3>Rồi ra lệnh bằng tiếng Việt</h3>
+        <p>AI đọc dữ liệu, chọn công cụ tính toán chính xác, tự kiểm tra kết quả và trả về báo cáo truy vết được tới từng chứng từ gốc.
+        Việc ghi sổ luôn cần người phê duyệt.</p>
         <div class="ac-chips">${SUGGESTIONS.map((t) => `<button class="ac-chip">${esc(t)}</button>`).join('')}</div></div>`;
       feed.querySelector('[data-goto-settings]')?.addEventListener('click', () => this.go('settings'));
+      feed.querySelector('[data-pick]')?.addEventListener('click', () => s.el.querySelector('#ac-file')?.click());
       feed.querySelectorAll('.ac-chip').forEach((b) => (b.onclick = () => { const i = s.el.querySelector('#ac-input'); i.value = b.textContent; i.focus(); autosize(i); }));
       return;
     }
@@ -385,6 +511,7 @@ export const accountingModule = {
       s.conv = await api(`/o/${s.org}/conversations/${cid}`);
       const t = s.el.querySelector('.ac-top .ac-sub');
       if (t) t.textContent = `${s.conv.files.length} chứng từ · ${s.conv.artifacts.length} kết quả`;
+      if (!s.conv.messages.length) this.renderFeed();
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -452,7 +579,7 @@ export const accountingModule = {
       <a class="btn btn-primary btn-xs" href="/api/accounting/o/${s.org}/artifacts/${g[0].id}/download">${svgIcon('download', 13, 2)} Tải</a>
       ${g[0].conversation_id ? `<button class="btn btn-secondary btn-xs" data-c="${g[0].conversation_id}">Mở phiên</button>` : ''}</div></div>`).join('')}</div>`
       : '<div class="ac-empty"><p>Chưa có báo cáo nào.</p></div>';
-    body.querySelectorAll('[data-a]').forEach((b) => (b.onclick = () => s.insp.artifact(b.dataset.a)));
+    body.querySelectorAll('[data-a]').forEach((b) => (b.onclick = () => s.insp.artifact(b.dataset.a, { wide: true })));
     body.querySelectorAll('[data-c]').forEach((b) => (b.onclick = () => this.openConv(b.dataset.c)));
   },
 
@@ -690,7 +817,7 @@ function loadCss() {
   const l = document.createElement('link');
   l.id = 'ac-css';
   l.rel = 'stylesheet';
-  l.href = '/styles/accounting.css?v=1';
+  l.href = '/styles/accounting.css?v=4';
   document.head.appendChild(l);
 }
 

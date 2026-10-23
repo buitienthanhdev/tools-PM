@@ -440,3 +440,18 @@ def test_how_many_people_question(app, golden, expected):
     assert step["status"] == "COMPLETED" and "120 dòng dữ liệu" in step["summary"] and "Mã SV" in step["summary"]
     msg = c.get(f"/api/accounting/o/{org}/conversations/{conv}").json["messages"][-1]["content"]
     assert "120 dòng dữ liệu" in msg
+
+
+def test_overview_counts(app, golden):
+    c = _login(app, "a@x.com")
+    org = _org(c)
+    conv = _conv(c, org)
+    upload(c, org, [golden / "inv_sale_011.xml", golden / "inv_purchase_103_vat_wrong.xml", golden / "sao_ke_vcb_032026.xlsx"], conv)
+    _run(c, org, conv, "Kiểm tra hoá đơn và xuất Excel")
+    d = c.get(f"/api/accounting/o/{org}/overview").json
+    assert d["files"] == 3 and d["invoices"]["total"] == 2
+    assert d["invoices"]["by_status"] == {"VERIFIED": 1, "CONFLICTED": 1}
+    assert d["bank_txns"] == 10 and d["artifacts"] == 1 and d["reviews_open"] >= 1
+    assert d["recent_tasks"][0]["conversation_id"] == conv and d["recent_artifacts"][0]["kind"] == "xlsx"
+    other = _login(app, "b@x.com")
+    assert other.get(f"/api/accounting/o/{org}/overview").status_code == 404
