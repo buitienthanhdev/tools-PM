@@ -421,3 +421,10 @@ def test_report_summary_has_no_running_steps(app, golden):
     pdf = next(s for s in v["steps"] if s["tool"] == "generate_pdf")["data"]
     r = c.get(f"/api/accounting/o/{org}/artifacts/{pdf['artifact_id']}/download")
     assert r.status_code == 200 and r.data[:5] == b"%PDF-"
+
+
+def test_admin_health_includes_accounting(app):
+    from modules.accounting import health
+
+    st = health.status()
+    assert "DB ổn" in st["detail"] and "worker 0/1" in st["detail"] and st["ok"] is False  # test không chạy worker

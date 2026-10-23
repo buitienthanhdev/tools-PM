@@ -5,7 +5,7 @@ import time
 import traceback
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request, send_from_directory
+from flask import Blueprint, current_app, jsonify, request, send_from_directory
 
 from core import config as hubcfg
 from core import gpu
@@ -53,6 +53,10 @@ def _tools_health():
             "ok": False,
             "detail": f"cổng SpaceT không phản hồi ({type(e).__name__})",
         }
+    if current_app.config.get("FEATURES", {}).get("accounting"):
+        from modules.accounting import health as accounting_health
+
+        out["accounting"] = accounting_health.status()
     return out
 
 
@@ -102,7 +106,8 @@ def api_health():
                     "legal",
                     "spacet",
                     "reviewingcv",
-                ],
+                ]
+                + (["accounting"] if current_app.config.get("FEATURES", {}).get("accounting") else []),
             }
         )
     except Exception as e:
