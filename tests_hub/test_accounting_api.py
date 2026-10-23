@@ -575,3 +575,22 @@ def test_split_legacy_shared_database(app, golden):
         assert audit.verify()[0]
     r = backup.verify(backup.create(os.path.join(settings.data_dir(), "..", "bk")))
     assert r["ok"] and r["databases"] == 3, r["problems"]
+
+
+def test_telemetry_spans_without_document_content(app, golden):
+    import os
+
+    from modules.accounting import settings, telemetry
+
+    c = _login(app, "a@x.com")
+    org = _org(c)
+    conv = _conv(c, org)
+    upload(c, org, [golden / "inv_sale_011.xml"], conv)
+    v = _run(c, org, conv, "Tổng hợp hoá đơn bí mật XYZ và xuất Excel")
+    assert v["task"]["status"] == "COMPLETED"
+    s = telemetry.summary(1)
+    assert s["task"]["count"] >= 1 and s["tool:summarize_invoices"]["count"] >= 1 and "extract" in s and "plan" in s
+    d = os.path.join(settings.data_dir(), "telemetry")
+    raw = "".join(open(os.path.join(d, f), encoding="utf-8").read() for f in os.listdir(d))
+    for secret in ("bí mật XYZ", "inv_sale_011", "0044444443", "27500000", "Bình Minh"):
+        assert secret not in raw  # chỉ mã định danh, tên công cụ, thời gian — không có nội dung chứng từ

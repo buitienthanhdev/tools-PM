@@ -9,7 +9,8 @@ def status():
     from core import config as hubcfg
     from core import llm
 
-    from .extract import ocr
+    from . import telemetry
+    from .extract import docai, ocr
     from .ingest import scanner
 
     cfg = settings.get()
@@ -42,6 +43,14 @@ def status():
         parts.append(f"AI {model}" + ("" if st["ok"] else " không sẵn sàng → lập kế hoạch theo quy tắc"))
     else:
         parts.append("AI tắt (quy tắc)")
-    parts.append("OCR có" if ocr.available() else "không OCR")
+    parts.append("OCR có" + (" + PaddleOCR" if docai.available("ocr") else "") if ocr.available() else "không OCR")
+    if docai.available("tables"):
+        parts.append("docling")
+    try:
+        t = telemetry.summary(7).get("task")
+        if t:
+            parts.append(f"P95 tác vụ 7 ngày {t['p95_s']}s ({t['count']} lượt)")
+    except Exception:
+        pass
     parts.append("Defender" if scanner.available() else "chưa quét virus")
     return {"ok": ok, "detail": " · ".join(parts)}

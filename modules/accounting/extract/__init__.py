@@ -3,7 +3,7 @@ Chọn parser theo định dạng đã nhận diện, chạy, rồi ghi kết qu
 Kết quả được cache theo (file, parser, phiên bản parser): chạy lại task không trích xuất lại.
 """
 
-from .. import audit, db, money, storage
+from .. import audit, db, money, storage, telemetry
 from ..engine import validate
 from . import office, pdf, xml_invoice
 from .base import VERIFIED, ExtractError, Result
@@ -78,7 +78,11 @@ def ensure(org_id, file_id, org_tax_id=None, actor="agent"):
         return existing
     if not storage.verify(f["storage_path"], f["sha256"]):
         raise ExtractError("integrity", "Bản gốc không khớp SHA-256 — dừng xử lý file này")
-    res = run(f)
+    with telemetry.span("extract", file=file_id, kind=f["kind"], size=f["size"]) as sp:
+        res = run(f)
+        sp.set_attribute("parser", f"{res.parser}@{res.version}")
+        sp.set_attribute("status", res.status)
+        sp.set_attribute("docs", len(res.docs))
     return persist(org_id, f, res, org_tax_id, actor)
 
 

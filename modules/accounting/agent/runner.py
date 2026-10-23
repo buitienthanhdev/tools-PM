@@ -19,7 +19,7 @@ import traceback
 
 from core import llm
 
-from .. import audit, db, security, settings, storage
+from .. import audit, db, security, settings, storage, telemetry
 from ..extract.base import fold
 from ..reports import excel as xl
 from ..reports import pdf as pdfr
@@ -308,6 +308,14 @@ def _insert_steps(task, steps, start_seq):
 
 
 def execute(task_id, worker_id="w"):
+    with telemetry.span("task", task=task_id, org=db.current_org() or "", worker=worker_id) as sp:
+        _execute(task_id, worker_id)
+        t = db.one("SELECT status, plan_source FROM tasks WHERE id=?", (task_id,))
+        sp.set_attribute("status", t["status"])
+        sp.set_attribute("plan_source", t["plan_source"] or "")
+
+
+def _execute(task_id, worker_id):
     task = db.one("SELECT * FROM tasks WHERE id=?", (task_id,))
     cfg = settings.get()
     try:
@@ -370,7 +378,10 @@ def _plan(run, task):
     m = run.manifest(refresh=True)
     arts = conversation_artifacts(task["org_id"], task["conversation_id"])
     event(task["org_id"], task["id"], "info", "Đang lập kế hoạch thực hiện…")
-    steps, questions, unsupported, source, note = planner.plan(task["command"], m, arts, policy.allowed_classes(run.ctx))
+    with telemetry.span("plan", task=task["id"]) as sp:
+        steps, questions, unsupported, source, note = planner.plan(task["command"], m, arts, policy.allowed_classes(run.ctx))
+        sp.set_attribute("source", source)
+        sp.set_attribute("steps", len(steps))
     if note:
         event(task["org_id"], task["id"], "warning", note)
     with db.tx() as c:
@@ -420,7 +431,8 @@ def _run_step(run, step):
         if not run.ctx.can(tool.permission):
             raise tools.ToolInputError(f"Vai trò không có quyền '{tool.permission}'")
         tools.check_params(step["tool"], params)
-        out = tool.handler(run, params)
+        with telemetry.span("tool", tool=step["tool"], task=step["task_id"], task_class=step["task_class"]):
+            out = tool.handler(run, params)
         out.setdefault("sections", [])
         out["warnings"] = run._warnings
         out["notes"] = run._notes
