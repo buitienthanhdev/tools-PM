@@ -10,7 +10,7 @@ const toast = (message, type = 'info') => eventBus.emit('toast:show', { message,
 
 const MODULE_NAMES = {
   whisper: 'Whisper Speech AI', voxcpm: 'VoxCPM Voice AI', image: 'Nét Ảnh AI', genreport: 'Báo cáo tiến độ',
-  legal: 'AI Tư vấn pháp luật', spacet: 'SpaceT', reviewingcv: 'Reviewing CV',
+  legal: 'AI Tư vấn pháp luật', spacet: 'SpaceT', reviewingcv: 'Reviewing CV', accounting: 'Kế toán AI',
 };
 
 export const authModule = {

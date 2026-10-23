@@ -95,6 +95,15 @@ for _bp in (
 ):
     app.register_blueprint(_bp)
 
+# Accounting AI (/accounting): chỉ gắn khi được bật (data/config.json "accounting.enabled" hoặc PM_ACCOUNTING=1)
+from modules.accounting import settings as accounting_settings  # noqa: E402
+
+app.config["FEATURES"] = {"accounting": bool(accounting_settings.get()["enabled"])}
+if app.config["FEATURES"]["accounting"]:
+    from modules.accounting.api import init_app as accounting_init  # noqa: E402
+
+    accounting_init(app)
+
 start_cleanup()
 
 if __name__ == "__main__":

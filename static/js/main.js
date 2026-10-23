@@ -21,6 +21,7 @@ import { genreportModule } from '../modules/genreport/genreportModule.js';
 import { legalModule } from '../modules/legal/legalModule.js';
 import { spacetModule } from '../modules/spacet/spacetModule.js';
 import { reviewingcvModule } from '../modules/reviewingcv/reviewingcvModule.js';
+import { accountingModule } from '../modules/accounting/accountingModule.js';
 import { authModule } from '../modules/auth/authModule.js';
 import { adminModule } from '../modules/auth/adminModule.js';
 import { authStore } from '../stores/authStore.js';
@@ -46,6 +47,9 @@ async function boot() {
 
   // Biết ai đang đăng nhập trước khi dựng trang
   await authStore.refresh();
+
+  // Kế toán AI chỉ xuất hiện khi máy chủ đã bật module (features.accounting)
+  if (authStore.features.accounting) moduleRegistry.register(accountingModule);
 
   // 3. Render layout shell
   const sidebarMount   = document.getElementById('sidebarMount');

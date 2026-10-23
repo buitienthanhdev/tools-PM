@@ -8,7 +8,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const toast = (message, type = 'info') => eventBus.emit('toast:show', { message, type });
 
 const MODULE_NAMES = {
-  whisper: 'Whisper', voxcpm: 'VoxCPM', image: 'Nét Ảnh', genreport: 'Báo cáo', legal: 'Pháp luật', spacet: 'SpaceT', reviewingcv: 'Reviewing CV',
+  whisper: 'Whisper', voxcpm: 'VoxCPM', image: 'Nét Ảnh', genreport: 'Báo cáo', legal: 'Pháp luật', spacet: 'SpaceT', reviewingcv: 'Reviewing CV', accounting: 'Kế toán AI',
 };
 const STATUS = { pending: ['Chờ duyệt', 'warn'], active: ['Hoạt động', 'ok'], disabled: ['Đã khoá', 'bad'] };
 const fmt = (t) => (t ? new Date(t * 1000).toLocaleString('vi-VN') : '—');

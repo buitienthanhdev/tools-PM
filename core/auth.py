@@ -15,12 +15,14 @@ import threading
 import time
 from datetime import timedelta
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, current_app, jsonify, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import config
 
-MODULES = ["whisper", "voxcpm", "image", "genreport", "legal", "spacet", "reviewingcv"]
+MODULES = ["whisper", "voxcpm", "image", "genreport", "legal", "spacet", "reviewingcv", "accounting"]
+# Công cụ xử lý dữ liệu nhạy cảm: không tự cấp khi auto_approve, admin phải cấp riêng
+SENSITIVE_MODULES = {"accounting"}
 USERS_PATH = os.path.join(config.DATA_DIR, "users.json")
 SECRET_PATH = os.path.join(config.DATA_DIR, "secret.key")
 SETUP_CODE_PATH = os.path.join(config.DATA_DIR, "admin_setup_code.txt")
@@ -154,6 +156,7 @@ _PREFIX_MODULE = [
     ("/api/genreport", "genreport"),
     ("/api/legal", "legal"),
     ("/api/cv", "reviewingcv"),
+    ("/api/accounting", "accounting"),
 ]
 _PUBLIC = ("/api/auth/", "/api/health")
 
@@ -225,6 +228,7 @@ def me():
             "user": current_user(),
             "modules": MODULES,
             "needs_admin_setup": setup_code() is not None,
+            "features": current_app.config.get("FEATURES", {}),
         }
     )
 
@@ -255,7 +259,7 @@ def register():
             "created": int(time.time()),
         }
         if config.get().get("auto_approve", True):
-            user.update(status="active", modules=MODULES)
+            user.update(status="active", modules=[m for m in MODULES if m not in SENSITIVE_MODULES])
         if is_admin_email:
             code = setup_code()
             if not code or not secrets.compare_digest(

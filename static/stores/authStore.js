@@ -19,6 +19,7 @@ class AuthStore {
     this.loaded = false;
     this.modules = [];
     this.needsAdminSetup = false;
+    this.features = {};
   }
 
   async refresh() {
@@ -27,6 +28,7 @@ class AuthStore {
       this.user = d.user;
       this.modules = d.modules || [];
       this.needsAdminSetup = !!d.needs_admin_setup;
+      this.features = d.features || {};
     } catch {
       this.user = null;
     }
