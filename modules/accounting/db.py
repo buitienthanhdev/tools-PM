@@ -1,12 +1,21 @@
 """
 SQLite (WAL) cho module kế toán: kết nối theo luồng, migration có đánh số, giao dịch an toàn.
 
+Mỗi tổ chức (không gian kế toán; không gian cá nhân = một người dùng) có FILE DATABASE RIÊNG:
+    <data_dir>/aaap.db               danh bạ trung tâm: orgs, org_members
+    <data_dir>/tenants/<org_id>.db   toàn bộ dữ liệu nghiệp vụ của tổ chức đó
+Database nào được dùng do ngữ cảnh quyết định (contextvar): use_org(org_id) / bind(org_id) / central().
+Trong database của tổ chức, trigger chặn mọi dòng mang org_id khác → nhầm ngữ cảnh thì lỗi ngay,
+không bao giờ ghi lẫn dữ liệu.
+
 Máy chủ không có PostgreSQL (docs/accounting/adr/0002-database.md); schema giữ kiểu dữ liệu
 chuyển được sang Postgres (TEXT/INTEGER/REAL, khoá ngoại, ràng buộc UNIQUE, CHECK).
 """
 
+import contextvars
 import json
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -22,8 +31,73 @@ _init_lock = threading.Lock()
 _initialized = set()
 
 
-def db_path():
+_org = contextvars.ContextVar("aaap_org", default=None)
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+CENTRAL_TABLES = ("orgs", "org_members")
+
+
+def central_path():
     return os.path.join(settings.data_dir(), "aaap.db")
+
+
+def tenant_path(org_id):
+    if not org_id or not _UUID.match(str(org_id)):
+        raise ValueError("org_id không hợp lệ")
+    d = os.path.join(settings.data_dir(), "tenants")
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, f"{org_id}.db")
+
+
+def current_org():
+    return _org.get()
+
+
+def db_path():
+    org = _org.get()
+    return tenant_path(org) if org else central_path()
+
+
+def bind(org_id):
+    """Chọn database của tổ chức cho ngữ cảnh hiện tại (luồng/request)."""
+    tenant_path(org_id)
+    _org.set(org_id)
+
+
+@contextmanager
+def use_org(org_id):
+    tenant_path(org_id)
+    token = _org.set(org_id)
+    try:
+        yield
+    finally:
+        _org.reset(token)
+
+
+@contextmanager
+def central():
+    token = _org.set(None)
+    try:
+        yield
+    finally:
+        _org.reset(token)
+
+
+def tenant_exists(org_id):
+    return os.path.exists(tenant_path(org_id))
+
+
+def _tenant_guards(c, org_id):
+    """Trigger: database của tổ chức chỉ nhận dòng của chính tổ chức đó."""
+    tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+    for t in tables:
+        cols = [r[1] for r in c.execute(f"PRAGMA table_info({t})")]
+        col = "id" if t == "orgs" else "org_id" if "org_id" in cols else None
+        if not col:
+            continue
+        for op in ("INSERT", "UPDATE"):
+            c.execute(f"""CREATE TRIGGER IF NOT EXISTS tenant_guard_{t}_{op.lower()} BEFORE {op} ON {t}
+                          WHEN NEW.{col} IS NOT '{org_id}'
+                          BEGIN SELECT RAISE(ABORT, 'row belongs to another tenant database'); END""")
 
 
 def new_id():
@@ -108,6 +182,9 @@ def conn():
         with _init_lock:
             if path not in _initialized:
                 migrate(c)
+                org = _org.get()
+                if org:
+                    _tenant_guards(c, org)
                 _initialized.add(path)
         _local.__dict__.setdefault("conns", {})[path] = c
     return c
@@ -151,6 +228,13 @@ def insert(c, table, row):
     q = ",".join("?" for _ in row)
     c.execute(f"INSERT INTO {table} ({cols}) VALUES ({q})", tuple(row.values()))
     return row
+
+
+def close_all():
+    """Đóng mọi kết nối của luồng hiện tại (trước khi thay file database)."""
+    reset_for_tests()
+    with _init_lock:
+        _initialized.clear()
 
 
 def reset_for_tests():

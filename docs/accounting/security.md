@@ -8,8 +8,10 @@
 - Chưa có: MFA, SSO doanh nghiệp.
 
 ## Cô lập tenant
-Mọi bảng có `org_id`; mọi truy vấn lọc `org_id`; route `/o/<org>/...` kiểm tra thành viên trước; không phải thành viên ⇒ 404.
-Kho file theo thư mục tổ chức; artifact chỉ tải được qua route có kiểm tra. Planner không nhận dữ liệu tổ chức khác.
+Mỗi tổ chức một **file database riêng** (`data/accounting/tenants/<org_id>.db`); không gian cá nhân = một người dùng.
+Danh bạ trung tâm chỉ chứa tổ chức và thành viên. Trigger trong mỗi database chặn dòng thuộc tổ chức khác. Route `/o/<org>/...`
+kiểm tra thành viên trước rồi mới mở database của tổ chức; không phải thành viên ⇒ 404. Lịch sử chat (phiên, tin nhắn,
+tác vụ, báo cáo) chỉ người tạo xem được. Kho file theo thư mục tổ chức. Xem ADR-0006.
 
 ## Chứng từ
 Nhận diện theo chữ ký (không tin đuôi file); chặn file thực thi; Defender quét (không tự xoá để giữ bằng chứng); ZIP: chặn path traversal,

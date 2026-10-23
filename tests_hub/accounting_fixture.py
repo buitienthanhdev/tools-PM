@@ -74,13 +74,23 @@ def new_ctx(org_name="Test", user="a@x.com", tax_id=ORG_TAX, roles=None):
     if roles:
         kw["roles"] = roles
     org = security.create_org(org_name, user, **kw)
-    return security.context(org, user)
+    ctx = security.context(org, user)
+    db_bind(org)
+    return ctx
+
+
+def db_bind(org_id):
+    """Chọn database riêng của tổ chức cho các thao tác trực tiếp trong test."""
+    from modules.accounting import db
+
+    db.bind(org_id)
 
 
 def ingest(ctx, paths):
     from modules.accounting import extract
     from modules.accounting.ingest import pipeline
 
+    db_bind(ctx.org_id)
     results, ids = [], []
     for p in paths:
         r = pipeline.ingest_stream(ctx, io.BytesIO(Path(p).read_bytes()), Path(p).name)

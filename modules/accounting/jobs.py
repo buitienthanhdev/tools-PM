@@ -1,6 +1,7 @@
 """
 Hàng đợi tác vụ bền vững trên bảng tasks (SQLite) + worker thread.
 
+- Mỗi tổ chức có database riêng: worker lần lượt xem hàng đợi trong database của từng tổ chức.
 - Nhận việc bằng giao dịch BEGIN IMMEDIATE (một worker một task), có lease có hạn.
 - Task RUNNING mà lease hết hạn (worker/process chết) được nhận lại và chạy tiếp từ bước chưa xong.
 - RETRY_SCHEDULED chỉ được nhận sau not_before (backoff + jitter đã tính ở runner).
@@ -13,7 +14,7 @@ import threading
 import time
 import uuid
 
-from . import db, settings
+from . import db, settings, tenancy
 
 MAX_TASK_ATTEMPTS = 5
 _wake = threading.Event()
@@ -26,6 +27,18 @@ def wake():
 
 
 def claim(worker_id):
+    """Trả về (org_id, task_id) của task được nhận, hoặc None."""
+    for org in tenancy.all_org_ids():
+        if not db.tenant_exists(org):
+            continue
+        with db.use_org(org):
+            tid = _claim_here(worker_id)
+        if tid:
+            return org, tid
+    return None
+
+
+def _claim_here(worker_id):
     lease = float(settings.get()["lease_s"])
     now = db.now()
     with db.tx() as c:
@@ -65,8 +78,11 @@ def run_once(worker_id="inline"):
     """Nhận và chạy một task (dùng trong test và worker)."""
     from .agent import runner
 
-    tid = claim(worker_id)
-    if tid:
+    got = claim(worker_id)
+    if not got:
+        return None
+    org, tid = got
+    with db.use_org(org):
         runner.execute(tid, worker_id)
     return tid
 

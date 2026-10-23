@@ -25,9 +25,13 @@ def _login(app, email):
 
 
 def _org(c):
+    from modules.accounting import db
+
     r = c.get("/api/accounting/status")
     assert r.status_code == 200, r.json
-    return r.json["orgs"][0]["id"]
+    org = r.json["orgs"][0]["id"]
+    db.bind(org)  # truy vấn trực tiếp trong test dùng database riêng của tổ chức này
+    return org
 
 
 def _set_tax(c, org, tax="0012345678"):
@@ -298,7 +302,7 @@ def test_worker_crash_resumes_without_duplicates(app, golden):
     upload(c, org, [golden / "inv_sale_011.xml", golden / "inv_sale_012.xml"], conv)
     r = c.post(f"/api/accounting/o/{org}/conversations/{conv}/messages", json={"content": "Tổng hợp hoá đơn, xuất Excel"})
     tid = r.json["task_id"]
-    assert jobs.claim("dead-worker") == tid
+    assert jobs.claim("dead-worker") == (org, tid)
     # Worker chạy được 2 bước rồi chết: mô phỏng bằng cách chạy tay 2 bước và để lease hết hạn
     run = runner.Run(db.one("SELECT * FROM tasks WHERE id=?", (tid,)))
     runner._insert_steps(run.task, [{"tool": "inspect_files", "goal": "a"}, {"tool": "extract_documents", "goal": "b"}], 1)
@@ -455,3 +459,119 @@ def test_overview_counts(app, golden):
     assert d["recent_tasks"][0]["conversation_id"] == conv and d["recent_artifacts"][0]["kind"] == "xlsx"
     other = _login(app, "b@x.com")
     assert other.get(f"/api/accounting/o/{org}/overview").status_code == 404
+
+
+def test_each_user_has_own_database_file(app, golden):
+    import os
+    import sqlite3
+
+    from modules.accounting import db
+
+    a = _login(app, "a@x.com")
+    org_a = _org(a)
+    upload(a, org_a, [golden / "inv_sale_011.xml"], _conv(a, org_a))
+    b = _login(app, "b@x.com")
+    org_b = _org(b)
+    assert org_a != org_b and os.path.exists(db.tenant_path(org_a)) and os.path.exists(db.tenant_path(org_b))
+    raw_b = sqlite3.connect(db.tenant_path(org_b))
+    assert raw_b.execute("SELECT count(*) FROM files").fetchone()[0] == 0  # file của B không chứa chứng từ của A
+    raw_b.close()
+    raw_a = sqlite3.connect(db.tenant_path(org_a))
+    assert raw_a.execute("SELECT count(*) FROM files").fetchone()[0] == 1
+    raw_a.close()
+
+
+def test_chat_history_private_even_in_shared_org(app, golden):
+    a = _login(app, "a@x.com")
+    org = _org(a)
+    conv = _conv(a, org)
+    upload(a, org, [golden / "inv_sale_012.xml"], conv)
+    v = _run(a, org, conv, "Tổng hợp hoá đơn và xuất Excel")
+    aid = next(s for s in v["steps"] if s["tool"] == "generate_excel")["data"]["artifact_id"]
+    b = _login(app, "b@x.com")
+    assert a.post(f"/api/accounting/o/{org}/members", json={"email": "b@x.com", "roles": ["ACCOUNTANT"]}).status_code == 200
+    assert b.get(f"/api/accounting/o/{org}/conversations").json["conversations"] == []
+    for url in (f"/o/{org}/conversations/{conv}", f"/o/{org}/tasks/{v['task']['id']}", f"/o/{org}/artifacts/{aid}",
+                f"/o/{org}/artifacts/{aid}/download", f"/o/{org}/files?conversation_id={conv}"):
+        assert b.get("/api/accounting" + url).status_code == 404, url
+    assert b.post(f"/api/accounting/o/{org}/conversations/{conv}/messages", json={"content": "x"}).status_code == 404
+    assert b.get(f"/api/accounting/o/{org}/artifacts").json["artifacts"] == []
+    ov = b.get(f"/api/accounting/o/{org}/overview").json
+    assert ov["recent_tasks"] == [] and ov["artifacts"] == 0
+    # Dữ liệu nghiệp vụ của tổ chức vẫn dùng chung cho nhóm
+    assert len(b.get(f"/api/accounting/o/{org}/files").json["files"]) == 1
+    assert a.get(f"/api/accounting/o/{org}/conversations").json["conversations"][0]["id"] == conv
+
+
+def test_split_legacy_shared_database(app, golden):
+    """Bố cục cũ (mọi tổ chức chung một file) được tách thành file riêng, đủ dữ liệu, nhật ký hợp lệ."""
+    import os
+    import sqlite3
+
+    from modules.accounting import audit, backup, db, settings, tenancy
+
+    a = _login(app, "a@x.com")
+    org_a = _org(a)
+    conv_a = _conv(a, org_a)
+    upload(a, org_a, [golden / "inv_sale_011.xml"], conv_a)
+    _run(a, org_a, conv_a, "Tổng hợp hoá đơn và xuất Excel")
+    b = _login(app, "b@x.com")
+    org_b = _org(b)
+    upload(b, org_b, [golden / "sao_ke_vcb_032026.xlsx"], _conv(b, org_b))
+    counts = {}
+    for org in (org_a, org_b):
+        with db.use_org(org):
+            counts[org] = {t: db.one(f"SELECT count(*) n FROM {t}")["n"] for t in tenancy.BUSINESS}
+    # Dựng database chung kiểu cũ từ hai database riêng
+    with db.central():
+        members = db.all_("SELECT * FROM org_members")
+    db.close_all()
+    central = db.central_path()
+    for x in (central, central + "-wal", central + "-shm"):
+        if os.path.exists(x):
+            os.remove(x)
+    src = sqlite3.connect(db.tenant_path(org_a))
+    dst = sqlite3.connect(central)
+    src.backup(dst)
+    src.close()
+    for (name,) in dst.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'tenant_guard_%'").fetchall():
+        dst.execute(f"DROP TRIGGER {name}")
+    dst.execute("DELETE FROM meta")
+    dst.execute("ATTACH DATABASE ? AS b", (db.tenant_path(org_b),))
+    for (t,) in dst.execute("SELECT name FROM main.sqlite_master WHERE type='table'").fetchall():
+        if t in ("schema_migrations", "sqlite_sequence", "meta"):
+            continue
+        cols = [r[1] for r in dst.execute(f"PRAGMA main.table_info({t})") if not (t == "audit_events" and r[1] == "seq")]
+        key = "id" if t == "orgs" else "org_id"
+        if key in cols:
+            q = ",".join(cols)
+            dst.execute(f"INSERT INTO main.{t} ({q}) SELECT {q} FROM b.{t} WHERE {key}=?", (org_b,))
+    for m in members:
+        dst.execute("INSERT OR IGNORE INTO org_members VALUES (?,?,?,?,?)", (m["org_id"], m["user_email"], m["role"], m["added_by"], m["added_at"]))
+    dst.commit()
+    dst.execute("DETACH DATABASE b")
+    dst.close()
+    for org in (org_a, org_b):
+        for x in ("", "-wal", "-shm"):
+            if os.path.exists(db.tenant_path(org) + x):
+                os.remove(db.tenant_path(org) + x)
+    # Tách
+    assert sorted(tenancy.split_legacy()) == sorted([org_a, org_b])
+    assert tenancy.split_legacy() == []  # chỉ chạy một lần
+    assert os.listdir(os.path.join(settings.data_dir(), "legacy"))
+    with db.central():
+        assert all(db.one(f"SELECT count(*) n FROM {t}")["n"] == 0 for t in tenancy.BUSINESS)
+        assert db.one("SELECT count(*) n FROM org_members")["n"] == len(members)
+    for org in (org_a, org_b):
+        with db.use_org(org):
+            assert {t: db.one(f"SELECT count(*) n FROM {t}")["n"] for t in tenancy.BUSINESS} == counts[org]
+            ok, bad, n = audit.verify()
+            assert ok and n > 0, bad
+    # Sau khi tách, hệ thống vẫn chạy bình thường
+    assert len(a.get(f"/api/accounting/o/{org_a}/conversations").json["conversations"]) == 1
+    v = _run(a, org_a, conv_a, "Tổng hợp hoá đơn và xuất Excel")
+    assert v["task"]["status"] == "COMPLETED"
+    with db.use_org(org_a):
+        assert audit.verify()[0]
+    r = backup.verify(backup.create(os.path.join(settings.data_dir(), "..", "bk")))
+    assert r["ok"] and r["databases"] == 3, r["problems"]

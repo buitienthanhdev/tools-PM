@@ -15,7 +15,7 @@ from flask import Blueprint, Response, jsonify, request, send_file
 
 from core import auth as hubauth
 
-from . import audit, db, jobs, security, settings, storage
+from . import audit, db, jobs, security, settings, storage, tenancy
 from .agent import review, runner
 from .engine import journal, proposals, rules
 from .extract import ocr
@@ -69,9 +69,10 @@ def org_route(perm="read"):
                 if k.endswith("_id") and not UUID.match(str(v)):
                     return err("not_found", "Không tìm thấy", 404)
             try:
-                ctx = security.context(org_id, user()[0])
+                ctx = security.context(org_id, user()[0])  # danh bạ trung tâm
                 ctx.require(perm)
-                return fn(ctx, *a, **kw)
+                with db.use_org(org_id):  # dữ liệu: file database riêng của tổ chức
+                    return fn(ctx, *a, **kw)
             except security.NotFound:
                 return err("not_found", "Không tìm thấy", 404)
             except security.Forbidden as e:
@@ -157,6 +158,8 @@ def org_settings_update(ctx):
             for inv in c.execute("SELECT id, seller_tax_id, buyer_tax_id FROM invoices WHERE org_id=?", (ctx.org_id,)).fetchall():
                 c.execute("UPDATE invoices SET direction=? WHERE id=?", (direction(dict(inv), tax), inv["id"]))
         audit.log(c, ctx.org_id, ctx.user, "org.update", "org", ctx.org_id, before=before, after={"name": name, "tax_id": tax})
+    with db.central(), db.tx() as c:
+        c.execute("UPDATE orgs SET name=?, tax_id=? WHERE id=?", (name, tax or None, ctx.org_id))
     return org_settings.__wrapped__(ctx)
 
 
@@ -175,7 +178,7 @@ def set_member(ctx):
 def upload(ctx):
     files = request.files.getlist("files")
     cid = request.form.get("conversation_id") or None
-    if cid and not db.one("SELECT 1 FROM conversations WHERE id=? AND org_id=?", (cid, ctx.org_id)):
+    if cid and not db.one("SELECT 1 FROM conversations WHERE id=? AND org_id=? AND created_by=?", (cid, ctx.org_id, ctx.user)):
         return err("not_found", "Không có hội thoại", 404)
     if not files:
         return err("bad_request", "Chưa chọn file", 400)
@@ -204,6 +207,7 @@ def _file_row(f):
 def list_files(ctx):
     cid = request.args.get("conversation_id")
     if cid:
+        one_or_404("SELECT id FROM conversations WHERE id=? AND org_id=? AND created_by=?", (cid, ctx.org_id, ctx.user))
         rows = db.all_("""SELECT DISTINCT f.* FROM files f JOIN uploads u ON u.file_id=f.id
                           WHERE f.org_id=? AND u.conversation_id=? ORDER BY f.uploaded_at""", (ctx.org_id, cid))
     else:
@@ -293,7 +297,7 @@ def invoice_evidence(ctx, invoice_id):
 @bp.route("/o/<org_id>/conversations")
 @org_route("read")
 def conversations(ctx):
-    rows = db.all_("SELECT * FROM conversations WHERE org_id=? ORDER BY updated_at DESC LIMIT 200", (ctx.org_id,))
+    rows = db.all_("SELECT * FROM conversations WHERE org_id=? AND created_by=? ORDER BY updated_at DESC LIMIT 200", (ctx.org_id, ctx.user))
     return jsonify({"conversations": rows})
 
 
@@ -311,7 +315,7 @@ def conversation_create(ctx):
 @bp.route("/o/<org_id>/conversations/<conversation_id>")
 @org_route("read")
 def conversation(ctx, conversation_id):
-    conv = one_or_404("SELECT * FROM conversations WHERE id=? AND org_id=?", (conversation_id, ctx.org_id))
+    conv = one_or_404("SELECT * FROM conversations WHERE id=? AND org_id=? AND created_by=?", (conversation_id, ctx.org_id, ctx.user))
     msgs = db.all_("SELECT * FROM messages WHERE conversation_id=? AND org_id=? ORDER BY created_at", (conversation_id, ctx.org_id))
     tasks_ = db.all_("SELECT id, status, command, plan_source, created_at, updated_at FROM tasks WHERE conversation_id=? AND org_id=? ORDER BY created_at",
                      (conversation_id, ctx.org_id))
@@ -329,7 +333,7 @@ def conversation(ctx, conversation_id):
 @rate_limit("message", 30)
 @org_route("run_task")
 def send_message(ctx, conversation_id):
-    one_or_404("SELECT id FROM conversations WHERE id=? AND org_id=?", (conversation_id, ctx.org_id))
+    one_or_404("SELECT id FROM conversations WHERE id=? AND org_id=? AND created_by=?", (conversation_id, ctx.org_id, ctx.user))
     d = body()
     content = str(d.get("content") or "").strip()
     if not content:
@@ -366,7 +370,7 @@ def send_message(ctx, conversation_id):
 
 
 def _task_view(ctx, task_id, after=0):
-    t = one_or_404("SELECT * FROM tasks WHERE id=? AND org_id=?", (task_id, ctx.org_id))
+    t = one_or_404("SELECT * FROM tasks WHERE id=? AND org_id=? AND created_by=?", (task_id, ctx.org_id, ctx.user))
     for k in ("plan_json", "summary_json", "error_json", "file_ids_json"):
         t[k.replace("_json", "")] = db.loads(t.pop(k), None)
     steps = db.all_("SELECT seq, tool, goal, task_class, risk, approval_required, status, attempts, started_at, finished_at, error_json, output_json FROM task_steps WHERE task_id=? ORDER BY seq", (task_id,))
@@ -391,7 +395,7 @@ def task(ctx, task_id):
 @bp.route("/o/<org_id>/tasks/<task_id>/cancel", methods=["POST"])
 @org_route("run_task")
 def task_cancel(ctx, task_id):
-    t = one_or_404("SELECT status FROM tasks WHERE id=? AND org_id=?", (task_id, ctx.org_id))
+    t = one_or_404("SELECT status FROM tasks WHERE id=? AND org_id=? AND created_by=?", (task_id, ctx.org_id, ctx.user))
     if t["status"] in runner.TERMINAL:
         return err("bad_state", "Tác vụ đã kết thúc", 400)
     with db.tx() as c:
@@ -406,17 +410,17 @@ def task_cancel(ctx, task_id):
 @bp.route("/o/<org_id>/artifacts")
 @org_route("read")
 def artifacts(ctx):
-    rows = db.all_("SELECT id, task_id, conversation_id, root_id, parent_id, version, name, kind, size, created_at, created_by FROM artifacts WHERE org_id=? ORDER BY created_at DESC LIMIT 500", (ctx.org_id,))
+    rows = db.all_("SELECT id, task_id, conversation_id, root_id, parent_id, version, name, kind, size, created_at, created_by FROM artifacts WHERE org_id=? AND created_by=? ORDER BY created_at DESC LIMIT 500", (ctx.org_id, ctx.user))
     return jsonify({"artifacts": rows})
 
 
 @bp.route("/o/<org_id>/artifacts/<artifact_id>")
 @org_route("read")
 def artifact(ctx, artifact_id):
-    a = one_or_404("SELECT * FROM artifacts WHERE id=? AND org_id=?", (artifact_id, ctx.org_id))
+    a = one_or_404("SELECT * FROM artifacts WHERE id=? AND org_id=? AND created_by=?", (artifact_id, ctx.org_id, ctx.user))
     sp = db.loads(a.pop("spec_json"), {}) or {}
     a["validation"] = db.loads(a.pop("validation_json"), {})
-    a["versions"] = db.all_("SELECT id, version, name, kind, created_at, parent_id FROM artifacts WHERE root_id=? AND org_id=? ORDER BY version", (a["root_id"], ctx.org_id))
+    a["versions"] = db.all_("SELECT id, version, name, kind, created_at, parent_id FROM artifacts WHERE root_id=? AND org_id=? AND created_by=? ORDER BY version", (a["root_id"], ctx.org_id, ctx.user))
     from .reports import spec as S
     a["preview"] = {"title": sp.get("title"), "period": sp.get("period"), "currency": sp.get("currency"), "warnings": sp.get("warnings", []),
                     "sources": sp.get("sources", []),
@@ -428,7 +432,7 @@ def artifact(ctx, artifact_id):
 @bp.route("/o/<org_id>/artifacts/<artifact_id>/download")
 @org_route("read")
 def artifact_download(ctx, artifact_id):
-    a = one_or_404("SELECT * FROM artifacts WHERE id=? AND org_id=?", (artifact_id, ctx.org_id))
+    a = one_or_404("SELECT * FROM artifacts WHERE id=? AND org_id=? AND created_by=?", (artifact_id, ctx.org_id, ctx.user))
     if not storage.verify(a["storage_path"], a["sha256"]):
         return err("integrity", "File báo cáo không khớp SHA-256 đã lưu", 500)
     mime = {"xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "pdf": "application/pdf"}.get(a["kind"], "application/octet-stream")
@@ -590,9 +594,9 @@ def overview(ctx):
     week = db.now() - 7 * 86400
     inv = {r["status"]: r["n"] for r in db.all_("SELECT status, count(*) n FROM cur_invoices WHERE org_id=? GROUP BY status", (o,))}
     recent_tasks = db.all_("""SELECT t.id, t.conversation_id, t.command, t.status, t.created_at, c.title FROM tasks t
-                              LEFT JOIN conversations c ON c.id=t.conversation_id WHERE t.org_id=? ORDER BY t.created_at DESC LIMIT 8""", (o,))
-    recent_arts = db.all_("""SELECT a.id, a.name, a.kind, a.version, a.created_at, a.conversation_id FROM artifacts a WHERE a.org_id=?
-                             AND a.version=(SELECT max(version) FROM artifacts b WHERE b.root_id=a.root_id) ORDER BY a.created_at DESC LIMIT 6""", (o,))
+                              LEFT JOIN conversations c ON c.id=t.conversation_id WHERE t.org_id=? AND t.created_by=? ORDER BY t.created_at DESC LIMIT 8""", (o, ctx.user))
+    recent_arts = db.all_("""SELECT a.id, a.name, a.kind, a.version, a.created_at, a.conversation_id FROM artifacts a WHERE a.org_id=? AND a.created_by=?
+                             AND a.version=(SELECT max(version) FROM artifacts b WHERE b.root_id=a.root_id) ORDER BY a.created_at DESC LIMIT 6""", (o, ctx.user))
     return jsonify({
         "org": db.one("SELECT name, tax_id, base_currency FROM orgs WHERE id=?", (o,)),
         "files": n("SELECT count(*) n FROM files WHERE org_id=? AND kind!='zip'"),
@@ -605,10 +609,10 @@ def overview(ctx):
         "approvals_pending": n("SELECT count(*) n FROM approvals WHERE org_id=? AND status='PENDING'"),
         "journal": {"proposed": n("SELECT count(*) n FROM journal_entries WHERE org_id=? AND status='PROPOSED'"),
                     "posted": n("SELECT count(*) n FROM journal_entries WHERE org_id=? AND status='POSTED'")},
-        "tasks": {"total": n("SELECT count(*) n FROM tasks WHERE org_id=?"),
-                  "running": n("SELECT count(*) n FROM tasks WHERE org_id=? AND status IN ('QUEUED','RUNNING','RETRY_SCHEDULED','VERIFYING')"),
-                  "week": n("SELECT count(*) n FROM tasks WHERE org_id=? AND created_at>?", week)},
-        "artifacts": n("SELECT count(DISTINCT root_id) n FROM artifacts WHERE org_id=?"),
+        "tasks": {"total": n("SELECT count(*) n FROM tasks WHERE org_id=? AND created_by=?", ctx.user),
+                  "running": n("SELECT count(*) n FROM tasks WHERE org_id=? AND created_by=? AND status IN ('QUEUED','RUNNING','RETRY_SCHEDULED','VERIFYING')", ctx.user),
+                  "week": n("SELECT count(*) n FROM tasks WHERE org_id=? AND created_by=? AND created_at>?", ctx.user, week)},
+        "artifacts": n("SELECT count(DISTINCT root_id) n FROM artifacts WHERE org_id=? AND created_by=?", ctx.user),
         "recent_tasks": recent_tasks, "recent_artifacts": recent_arts,
     })
 
@@ -626,5 +630,12 @@ def review_count(ctx):
 def init_app(app):
     """Gắn module vào Hub (chỉ khi được bật) và khởi động worker."""
     app.register_blueprint(bp)
-    db.conn()  # migrate
+    with db.central():
+        db.conn()  # migrate danh bạ trung tâm
+    tenancy.split_legacy()  # bố cục cũ (một file chung) → mỗi tổ chức một file; chạy một lần
+    for org in tenancy.all_org_ids():
+        if not db.tenant_exists(org):
+            with db.central():
+                row = db.one("SELECT * FROM orgs WHERE id=?", (org,))
+            tenancy.create_tenant(row)
     jobs.start_workers()

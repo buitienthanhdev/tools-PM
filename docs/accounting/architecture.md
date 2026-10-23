@@ -38,7 +38,7 @@ Trình duyệt (/accounting)                       Cloudflare Tunnel → waitres
 
 ## Dữ liệu
 
-- `data/accounting/aaap.db` (SQLite WAL, `synchronous=FULL`), `objects/<org>/<sha2>/<sha256>` (bản gốc chỉ-đọc), `artifacts/<org>/<id>.xlsx|pdf`.
+- `data/accounting/aaap.db` = danh bạ trung tâm (tổ chức, thành viên); `data/accounting/tenants/<org_id>.db` = database riêng của từng tổ chức (SQLite WAL, `synchronous=FULL`); `objects/<org>/<sha2>/<sha256>` (bản gốc chỉ-đọc), `artifacts/<org>/<id>.xlsx|pdf`. Xem ADR-0006.
 - Mọi bảng nghiệp vụ có `org_id`; truy vấn luôn lọc `org_id`. Tiền là TEXT thập phân, tính bằng `Decimal`.
 - Provenance (`fields`): file_id, hash, trang, sheet/ô, toạ độ hoặc XPath, phương pháp, phiên bản parser, model, độ tin cậy, trạng thái.
 

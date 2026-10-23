@@ -43,6 +43,7 @@ def main(out_dir=None):
     metrics = {}
     org = security.create_org("eval", "eval@x", tax_id=EXPECTED["org"]["tax_id"])
     ctx = security.context(org, "eval@x")
+    db.bind(org)
 
     # 1. Đọc file
     supported = ok = rejected_ok = 0

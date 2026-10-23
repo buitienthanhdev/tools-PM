@@ -50,12 +50,13 @@ class Ctx:
 
 
 def roles_of(org_id, user):
-    return {
-        r["role"]
-        for r in db.all_(
-            "SELECT role FROM org_members WHERE org_id=? AND user_email=?", (org_id, user)
-        )
-    }
+    with db.central():
+        return {
+            r["role"]
+            for r in db.all_(
+                "SELECT role FROM org_members WHERE org_id=? AND user_email=?", (org_id, user)
+            )
+        }
 
 
 def context(org_id, user):
@@ -69,6 +70,11 @@ def context(org_id, user):
 
 
 def orgs_of(user):
+    with db.central():
+        return _orgs_of(user)
+
+
+def _orgs_of(user):
     rows = db.all_(
         """SELECT o.id, o.name, o.tax_id, o.base_currency, o.accounting_regime, group_concat(m.role) roles
            FROM orgs o JOIN org_members m ON m.org_id=o.id WHERE m.user_email=?
@@ -82,20 +88,24 @@ def orgs_of(user):
 
 def create_org(name, created_by, roles=("ADMIN", "ACCOUNTANT", "REVIEWER", "APPROVER"), tax_id=None,
                base_currency="VND"):
+    from . import tenancy
     from .engine import coa
 
     org_id = db.new_id()
-    with db.tx() as c:
-        db.insert(c, "orgs", {
-            "id": org_id, "name": name.strip()[:120] or "Tổ chức", "tax_id": (tax_id or None),
-            "base_currency": base_currency, "accounting_regime": coa.DEFAULT_REGIME,
-            "created_by": created_by, "created_at": db.now(),
-        })
+    row = {
+        "id": org_id, "name": name.strip()[:120] or "Tổ chức", "tax_id": (tax_id or None),
+        "base_currency": base_currency, "accounting_regime": coa.DEFAULT_REGIME,
+        "created_by": created_by, "created_at": db.now(),
+    }
+    with db.central(), db.tx() as c:  # danh bạ trung tâm: tổ chức + thành viên
+        db.insert(c, "orgs", row)
         for role in roles:
             db.insert(c, "org_members", {
                 "org_id": org_id, "user_email": created_by, "role": role,
                 "added_by": created_by, "added_at": db.now(),
             })
+    tenancy.create_tenant(row)  # file database riêng của tổ chức
+    with db.use_org(org_id), db.tx() as c:
         coa.seed(c, org_id)
         audit.log(c, org_id, created_by, "org.create", "org", org_id, name=name, roles=list(roles))
     return org_id
@@ -114,7 +124,7 @@ def set_member(ctx, email, roles):
     bad = [r for r in roles if r not in ROLES]
     if bad or not email:
         raise Forbidden(f"Vai trò không hợp lệ: {bad}", "bad_role")
-    with db.tx() as c:
+    with db.central(), db.tx() as c:
         before = sorted(r[0] for r in c.execute(
             "SELECT role FROM org_members WHERE org_id=? AND user_email=?", (ctx.org_id, email)))
         if email == ctx.user and "ADMIN" in before and "ADMIN" not in roles:
@@ -129,12 +139,14 @@ def set_member(ctx, email, roles):
                 "org_id": ctx.org_id, "user_email": email, "role": role,
                 "added_by": ctx.user, "added_at": db.now(),
             })
-        audit.log(c, ctx.org_id, ctx.user, "member.set", "member", email, before=before, after=sorted(set(roles)))
+    with db.use_org(ctx.org_id):
+        audit.record(ctx.org_id, ctx.user, "member.set", "member", email, before=before, after=sorted(set(roles)))
 
 
 def members(ctx):
-    rows = db.all_(
+    with db.central():
+        rows = db.all_(
         "SELECT user_email, group_concat(role) roles FROM org_members WHERE org_id=? GROUP BY user_email",
-        (ctx.org_id,),
-    )
+            (ctx.org_id,),
+        )
     return [{"email": r["user_email"], "roles": sorted(r["roles"].split(","))} for r in rows]

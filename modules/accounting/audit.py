@@ -58,13 +58,22 @@ def record(org_id, actor, action, target_type=None, target_id=None, **details):
 
 
 def verify():
-    """Kiểm tra toàn chuỗi. Trả về (ok, seq lỗi đầu tiên hoặc None, số bản ghi)."""
+    """
+    Kiểm tra toàn chuỗi của database hiện hành. Trả về (ok, seq lỗi đầu tiên hoặc None, số bản ghi).
+    Phần nhật ký được chuyển từ database chung cũ (seq ≤ audit_imported_through_seq) xen kẽ với tổ chức khác,
+    nên với phần đó kiểm tra băm của từng dòng; từ sau đó kiểm tra nối chuỗi đầy đủ.
+    """
+    m = db.one("SELECT value FROM meta WHERE key='audit_imported_through_seq'")
+    imported = int(m["value"]) if m else 0
     prev = GENESIS
     n = 0
     for r in db.conn().execute("SELECT * FROM audit_events ORDER BY seq"):
         r = dict(r)
         n += 1
-        if r["prev_hash"] != prev or _digest(prev, r) != r["hash"]:
+        if r["seq"] <= imported:
+            if _digest(r["prev_hash"], r) != r["hash"]:
+                return False, r["seq"], n
+        elif r["prev_hash"] != prev or _digest(prev, r) != r["hash"]:
             return False, r["seq"], n
         prev = r["hash"]
     return True, None, n

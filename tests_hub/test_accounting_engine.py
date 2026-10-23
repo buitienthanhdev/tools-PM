@@ -310,15 +310,31 @@ def test_double_payment_suspected(env, golden):
 
 
 def test_tenant_isolation_engine(env, golden):
-    from modules.accounting import security
+    """Mỗi tổ chức một FILE database: dữ liệu A không tồn tại trong file của B; ghi nhầm database bị chặn."""
+    import sqlite3
+
+    from modules.accounting import db, security
     from modules.accounting.engine import analysis, duplicates
 
     a = new_ctx("A", "a@x.com")
     b = new_ctx("B", "b@x.com")
     ingest(a, [golden / "inv_purchase_101.xml"])
     ingest(b, [golden / "inv_purchase_105_suspect.xml"])
-    assert len(analysis.invoices(a.org_id)) == 1 and len(analysis.invoices(b.org_id)) == 1
-    assert not [g for g in duplicates.detect(b.org_id) if g["type"] == "INVOICE_SUSPECTED"]  # không thấy HĐ của A
+    assert db.tenant_path(a.org_id) != db.tenant_path(b.org_id)
+    with db.use_org(a.org_id):
+        assert len(analysis.invoices(a.org_id)) == 1
+    with db.use_org(b.org_id):
+        assert len(analysis.invoices(b.org_id)) == 1
+        assert analysis.invoices(a.org_id) == []  # dữ liệu A không có trong file của B
+        assert not [g for g in duplicates.detect(b.org_id) if g["type"] == "INVOICE_SUSPECTED"]
+        with pytest.raises(sqlite3.IntegrityError):  # trigger: file của B không nhận dòng của A
+            db.conn().execute("INSERT INTO conversations (id, org_id, created_by, title, created_at, updated_at) VALUES ('x', ?, 'a@x.com', 't', 0, 0)", (a.org_id,))
+    raw = sqlite3.connect(db.tenant_path(b.org_id))
+    assert raw.execute("SELECT count(*) FROM invoices WHERE org_id=?", (a.org_id,)).fetchone()[0] == 0
+    assert raw.execute("SELECT count(*) FROM orgs").fetchone()[0] == 1
+    raw.close()
+    with db.central():  # danh bạ trung tâm không chứa dữ liệu nghiệp vụ
+        assert db.one("SELECT count(*) n FROM invoices")["n"] == 0 and db.one("SELECT count(*) n FROM orgs")["n"] == 2
     with pytest.raises(security.NotFound):
         security.context(a.org_id, "b@x.com")
 
