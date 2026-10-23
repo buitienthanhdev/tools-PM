@@ -14,7 +14,7 @@ ADMIN = "tienthanh18082003@gmail.com"
 
 @pytest.fixture(scope="module")
 def app(tmp_path_factory):
-    from core import auth, config, jobs
+    from core import analytics, auth, config, jobs
 
     cfg = config.get()  # cô lập khỏi data/config.json thật của máy chủ
     cfg["admin_email"] = ADMIN
@@ -24,6 +24,7 @@ def app(tmp_path_factory):
     auth.USERS_PATH = str(d / "users.json")
     auth.SECRET_PATH = str(d / "secret.key")
     auth.SETUP_CODE_PATH = str(d / "code.txt")
+    analytics.reset_for_tests(str(d / "analytics.db"))  # không ghi vào data/ thật
     upload_dir = d / "uploads"
     upload_dir.mkdir()
     jobs.UPLOAD_DIR = upload_dir

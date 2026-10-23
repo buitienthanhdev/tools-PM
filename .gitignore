@@ -41,6 +41,8 @@ data/legal_crawl/
 data/meanwhile.json
 # Module kế toán: chứng từ, database từng tổ chức, bản sao lưu, telemetry — dữ liệu khách hàng, không bao giờ commit
 data/accounting/
+# Nhật ký truy cập cho dashboard quản trị (IP, email, hành vi người dùng)
+data/analytics/
 bin/
 .gev-cache/
 .gev-logs/

@@ -6,6 +6,7 @@ import { moduleRegistry } from './moduleRegistry.js';
 import { globalStore } from '../stores/globalStore.js';
 import { authStore } from '../stores/authStore.js';
 import { eventBus } from '../stores/eventBus.js';
+import { tracker } from '../services/tracker.js';
 
 class Router {
   constructor() {
@@ -80,6 +81,8 @@ class Router {
     // Mount new target module
     this.currentModule = moduleObj;
     globalStore.setActiveRoute(moduleObj.route);
+
+    tracker.page(window.location.pathname);
 
     if (this.workspaceEl) {
       this.workspaceEl.scrollTop = 0;

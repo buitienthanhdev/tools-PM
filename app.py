@@ -16,7 +16,7 @@ for _stream in (sys.stdout, sys.stderr):
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from core import auth
+from core import analytics, auth
 
 # ── Path Setup ───────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -60,6 +60,7 @@ _ORIGINS = [
 ]
 CORS(app, origins=_ORIGINS, supports_credentials=True)
 auth.init_app(app)
+analytics.init_app(app)  # theo dõi truy cập cho dashboard quản trị (data/analytics/)
 
 
 @app.before_request
@@ -82,9 +83,10 @@ def _security_headers(resp):
 from core.jobs import start_cleanup  # noqa: E402
 from modules.legal_rag.api import bp as legal_bp  # noqa: E402
 from modules.reviewingcv.api import bp as cv_bp  # noqa: E402
-from routes import genreport, image, jobs, speech, system  # noqa: E402
+from routes import admin_analytics, genreport, image, jobs, speech, system  # noqa: E402
 
 for _bp in (
+    admin_analytics.bp,
     legal_bp,
     cv_bp,
     speech.bp,

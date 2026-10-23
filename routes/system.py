@@ -7,8 +7,8 @@ from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request, send_from_directory
 
+from core import analytics, gpu
 from core import config as hubcfg
-from core import gpu
 from core.jobs import UPLOAD_DIR
 from routes import image, speech
 
@@ -145,6 +145,7 @@ def handle_404(e):
 @bp.app_errorhandler(Exception)
 def handle_500(e):
     traceback.print_exc()
+    analytics.server_error(e)
     if request.path.startswith("/api/"):
         return jsonify({"error": "Lỗi máy chủ, vui lòng thử lại"}), 500
     return send_from_directory(STATIC_DIR, "index.html")

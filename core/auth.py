@@ -18,7 +18,7 @@ from datetime import timedelta
 from flask import Blueprint, current_app, jsonify, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from . import config
+from . import analytics, config
 
 MODULES = ["whisper", "voxcpm", "image", "genreport", "legal", "spacet", "reviewingcv", "accounting"]
 # Công cụ xử lý dữ liệu nhạy cảm: không tự cấp khi auto_approve, admin phải cấp riêng
@@ -158,7 +158,7 @@ _PREFIX_MODULE = [
     ("/api/cv", "reviewingcv"),
     ("/api/accounting", "accounting"),
 ]
-_PUBLIC = ("/api/auth/", "/api/health")
+_PUBLIC = ("/api/auth/", "/api/health", "/api/track/")  # track: beacon lượt xem/lỗi trình duyệt (giới hạn tốc độ)
 
 
 def _deny(code, msg, status):
@@ -273,6 +273,7 @@ def register():
             user.update(role="admin", status="active", modules=MODULES)
         db["users"][email] = user
         _write(db)
+        analytics.event("register", user=email, actor=email, status=user["status"], name=name)
         if is_admin_email:
             try:
                 os.remove(SETUP_CODE_PATH)
@@ -301,8 +302,11 @@ def login():
     if not u or not check_password_hash(u["pw_hash"], pw):
         n = (rec[0] if rec else 0) + 1
         _fails[key] = [n, time.time() + 300 if n >= 5 else 0]
+        analytics.event("login_fail", user=email if u else None, actor="anonymous", email=email[:120], attempt=n,
+                        locked=n >= 5, known_user=bool(u))
         return _deny("bad_login", "Sai email hoặc mật khẩu", 401)
     if u.get("status") == "disabled":
+        analytics.event("login_blocked", user=email, actor=email, reason="disabled")
         return _deny("disabled", "Tài khoản đã bị khoá", 403)
     _fails.pop(key, None)
     with _lock:
@@ -312,11 +316,14 @@ def login():
     session.clear()
     session.permanent = True
     session["email"] = email
+    analytics.event("login_ok", user=email, actor=email)
     return jsonify({"user": current_user()})
 
 
 @bp.route("/auth/logout", methods=["POST"])
 def logout():
+    if session.get("email"):
+        analytics.event("logout", user=session.get("email"), actor=session.get("email"))
     session.clear()
     return jsonify({"ok": True})
 
@@ -337,6 +344,7 @@ def change_password():
             return _deny("bad_login", "Mật khẩu cũ không đúng", 403)
         u["pw_hash"] = generate_password_hash(new)
         _write(db)
+    analytics.event("password_change", user=user["email"], actor=user["email"])
     return jsonify({"ok": True})
 
 
@@ -373,12 +381,15 @@ def admin_update(email):
             u["status"] = d["status"]
         if "modules" in d:
             u["modules"] = [m for m in d["modules"] if m in MODULES]
+        before = {"status": u.get("status"), "modules": list(u.get("modules", []))}
         if d.get("new_password"):
             if len(str(d["new_password"])) < 8:
                 return _deny("weak_password", "Mật khẩu tối thiểu 8 ký tự", 400)
             u["pw_hash"] = generate_password_hash(str(d["new_password"]))
         _write(db)
-        return jsonify({"user": _public(email, u)})
+    analytics.event("admin_update", user=email, before=before,
+                    after={k: d[k] for k in ("status", "modules") if k in d}, password_reset=bool(d.get("new_password")))
+    return jsonify({"user": _public(email, u)})
 
 
 @bp.route("/admin/users/<email>", methods=["DELETE"])
@@ -393,4 +404,5 @@ def admin_delete(email):
             return _deny("forbidden", "Không xoá được admin", 403)
         del db["users"][email]
         _write(db)
+    analytics.event("admin_delete", user=email, name=u.get("name"))
     return jsonify({"ok": True})
