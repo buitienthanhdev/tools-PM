@@ -9,8 +9,11 @@ Trạng thái:
 
 from decimal import Decimal
 
+from stdnum.vn import mst as vn_mst
+
 from .. import money
 from ..extract.base import fold, norm_tax_id
+from . import vnwords
 
 REQUIRED = ("form_no", "series", "number", "issue_date", "seller_name", "seller_tax_id", "total")
 STANDARD_RATES = {Decimal("0"), Decimal("5"), Decimal("10")}
@@ -44,13 +47,31 @@ def direction(inv, org_tax_id):
     return "unrelated"
 
 
-def invoice(inv, lines, structured):
+def invoice(inv, lines, structured, ocr=False):
     cur = (inv.get("currency") or "VND").upper()
     unit = Decimal(1).scaleb(-money.scale(cur))
     issues = []
     for f in REQUIRED:
         if not inv.get(f):
             issues.append(_issue("R-INV-REQUIRED", "evidence", f, f"Thiếu trường bắt buộc: {f}"))
+    num = str(inv.get("number") or "")
+    if num and (not num.isdigit() or len(num) > 8):
+        issues.append(_issue("R-INV-REQUIRED", "review", "number", f"Số hoá đơn '{num}' không phải tối đa 8 chữ số"))
+    # MST: chữ số kiểm tra theo cấu trúc mã số thuế (python-stdnum stdnum.vn.mst)
+    for field, who in (("seller_tax_id", "người bán"), ("buyer_tax_id", "người mua")):
+        t = norm_tax_id(inv.get(field))
+        if t and not vn_mst.is_valid(t):
+            issues.append(_issue("R-INV-TAXID", "review", field, f"MST {who} {t} sai cấu trúc hoặc chữ số kiểm tra"))
+    # Tổng tiền bằng chữ phải khớp bằng số (NĐ 123/2020 Điều 10). OCR có thể đọc sai chữ → chỉ đưa vào kiểm duyệt.
+    total_d = _d(inv.get("total"))
+    words = inv.get("total_in_words")
+    if words and cur == "VND" and total_d is not None and total_d >= 0:
+        said = vnwords.words_to_int(words)
+        if said is not None and Decimal(said) != total_d:
+            issues.append(_issue("R-INV-WORDS", "review" if ocr else "conflict", "total_in_words",
+                                 f"Tổng tiền bằng chữ ({said:,} — “{str(words)[:80]}”) không khớp bằng số "
+                                 f"(đúng phải là “{vnwords.int_to_words(total_d)}”)".replace(",", "."),
+                                 total_d, Decimal(said)))
 
     sub, vat, total = _d(inv.get("subtotal")), _d(inv.get("vat_amount")), _d(inv.get("total"))
 

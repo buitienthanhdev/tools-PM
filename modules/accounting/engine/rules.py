@@ -70,6 +70,19 @@ RULES = [
         "tests_hub/test_accounting_extract.py::test_reduced_vat_rate_needs_review",
     ),
     Rule(
+        "R-INV-WORDS", "Tổng tiền thanh toán bằng chữ tiếng Việt phải khớp bằng số",
+        "Nghị định 123/2020/NĐ-CP (sửa đổi bởi NĐ 70/2025/NĐ-CP)", "Điều 10 (tổng tiền thanh toán bằng chữ số Ả-rập và bằng chữ)",
+        "2022-07-01", None, "1", "Hoá đơn bằng đồng Việt Nam", "IMPLEMENTED",
+        "tests_hub/test_accounting_extract.py::test_amount_in_words_mismatch_flagged",
+    ),
+    Rule(
+        "R-INV-TAXID", "Mã số thuế đúng cấu trúc và chữ số kiểm tra",
+        "Cấu trúc mã số thuế (thuật toán chữ số kiểm tra — thư viện python-stdnum stdnum.vn.mst)",
+        "Chưa đối chiếu văn bản quy định cấu trúc MST trong kho local",
+        "2022-07-01", None, "1", "MST 10 hoặc 13 chữ số", "NEEDS_EXPERT_REVIEW",
+        "tests_hub/test_accounting_extract.py::test_invalid_tax_id_flagged",
+    ),
+    Rule(
         "R-INV-CORRECTION", "Hoá đơn điều chỉnh/thay thế phải tham chiếu hoá đơn gốc",
         "Nghị định 123/2020/NĐ-CP (sửa đổi bởi NĐ 70/2025/NĐ-CP)", "Điều 19",
         "2022-07-01", None, "1", "Hoá đơn điện tử", "PARTIAL",

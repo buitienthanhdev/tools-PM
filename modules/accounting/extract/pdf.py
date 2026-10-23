@@ -7,7 +7,7 @@ from . import ocr, text_invoice
 from .base import Doc, ExtractError, Result
 
 PARSER = "pdf"
-VERSION = "1.0.0"
+VERSION = "1.1.0"  # 1.1.0: tổng tiền bằng chữ
 MIN_TEXT_CHARS = 25
 
 

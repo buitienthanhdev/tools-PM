@@ -34,7 +34,7 @@ def _org(c):
     return org
 
 
-def _set_tax(c, org, tax="0012345678"):
+def _set_tax(c, org, tax="0012345672"):
     assert c.post(f"/api/accounting/o/{org}/settings", json={"tax_id": tax}).status_code == 200
 
 
@@ -95,7 +95,7 @@ def test_full_workflow_invoices(app, golden):
     assert ws.freeze_panes == "A6" and ws.auto_filter.ref
     # Tổng hợp không cộng hoá đơn trùng / chưa kiểm tra
     sec = next(s for s in art["preview"]["sheets"] if s["name"] == "Theo đối tượng")
-    sale = next(r for r in sec["rows"] if r["tax_id"] == "0044444444")
+    sale = next(r for r in sec["rows"] if r["tax_id"] == "0044444443")
     assert sale["total"] == "27500000" and sale["count"] == 1
     msgs = c.get(f"/api/accounting/o/{org}/conversations/{conv}").json["messages"]
     assert msgs[-1]["role"] == "assistant" and msgs[-1]["task_id"] == t["id"]

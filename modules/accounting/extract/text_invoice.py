@@ -47,7 +47,7 @@ def extract(pages, file_name, method, locate=None, currency="VND", base_conf=0.9
     inv = {
         "source_format": method, "form_no": None, "series": None, "number": None, "issue_date": None,
         "currency": currency, "fx_rate": None, "seller_name": None, "seller_tax_id": None, "buyer_name": None,
-        "buyer_tax_id": None, "buyer_person": None, "subtotal": None, "vat_amount": None, "total": None, "authority_code": None,
+        "buyer_tax_id": None, "buyer_person": None, "total_in_words": None, "subtotal": None, "vat_amount": None, "total": None, "authority_code": None,
         "invoice_kind": "original", "related_invoice": None, "vat_groups": [], "vat_rate_text": None,
     }
     section = None
@@ -120,6 +120,11 @@ def extract(pages, file_name, method, locate=None, currency="VND", base_conf=0.9
                 m = re.search(r"(\d{1,2})\s*%", raw)
                 if m:
                     put("vat_rate_text", m.group(0), m.group(1), page, conf, bbox)
+                continue
+            if f.startswith(("so tien viet bang chu", "so tien bang chu", "bang chu", "amount in words", "tong tien bang chu")):
+                v = _value_after_colon(raw)
+                if v:
+                    put("total_in_words", v, " ".join(v.split()), page, conf, bbox)  # gộp mọi kiểu khoảng trắng (kể cả U+00A0)
                 continue
             if f.startswith(("ma cua co quan thue", "ma cqt")):
                 v = _value_after_colon(raw)

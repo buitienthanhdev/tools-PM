@@ -309,3 +309,41 @@ def test_reextraction_supersedes_without_double_counting(env, golden, monkeypatc
     sts = sorted(r["status"] for r in db.all_("SELECT status FROM extractions WHERE file_id=?", (ids[0],)))
     assert sts == ["OK", "SUPERSEDED"]
     assert db.one("SELECT count(*) n FROM bank_transactions WHERE org_id=?", (ctx.org_id,))["n"] == 20  # lịch sử giữ nguyên
+
+
+def test_amount_in_words_mismatch_flagged(env, golden):
+    from modules.accounting import db
+
+    ctx = new_ctx()
+    ingest(ctx, [golden / "inv_purchase_109_words_wrong.xml", golden / "inv_sale_011.xml", golden / "inv_sale_011.pdf"])
+    rows = {r["number"] + r["source_format"]: r for r in db.all_("SELECT * FROM invoices WHERE org_id=?", (ctx.org_id,))}
+    bad = rows["0000109xml"]
+    assert bad["status"] == "CONFLICTED" and "R-INV-WORDS" in bad["issues_json"] and "năm trăm hai mươi tám nghìn" in bad["issues_json"]
+    assert "R-INV-WORDS" not in rows["0000011xml"]["issues_json"] and rows["0000011xml"]["status"] == "VERIFIED"
+    assert "R-INV-WORDS" not in rows["0000011pdf_text"]["issues_json"]  # chữ đọc từ PDF khớp
+    f = db.one("SELECT normalized_value FROM fields WHERE org_id=? AND field_name='total_in_words' AND extraction_method='pdf_text'", (ctx.org_id,))
+    assert f and f["normalized_value"].startswith("Hai mươi bảy triệu năm trăm nghìn")
+
+
+def test_invalid_tax_id_flagged(env, golden):
+    from modules.accounting import db
+
+    ctx = new_ctx()
+    ingest(ctx, [golden / "inv_purchase_108_bad_mst.xml"])
+    inv = db.one("SELECT status, issues_json FROM invoices WHERE org_id=?", (ctx.org_id,))
+    assert inv["status"] == "NEEDS_REVIEW" and "R-INV-TAXID" in inv["issues_json"] and "0011111111" in inv["issues_json"]
+
+
+def test_vietnamese_words_parser_property():
+    import random
+
+    from modules.accounting.engine.vnwords import int_to_words, words_to_int
+
+    rng = random.Random(123)
+    for _ in range(3000):
+        n = rng.randint(0, 10**12)
+        assert words_to_int(int_to_words(n)) == n
+    for text, n in [("Hai tỷ không trăm linh hai triệu không trăm linh hai nghìn không trăm linh hai đồng", 2002002002),
+                    ("Bốn mươi tư ngàn đồng chẵn", 44000), ("Bẩy mươi lăm nghìn", 75000), ("Một trăm lẻ năm", 105)]:
+        assert words_to_int(text) == n
+    assert words_to_int("hai ba triệu") is None and words_to_int("không rõ") is None

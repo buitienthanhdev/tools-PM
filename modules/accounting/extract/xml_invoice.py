@@ -10,7 +10,7 @@ from .. import money
 from .base import EXTRACTED, Doc, ExtractError, Field, Result, norm_tax_id, parse_date
 
 PARSER = "xml_einvoice"
-VERSION = "1.0.0"
+VERSION = "1.1.0"  # 1.1.0: tổng tiền bằng chữ
 
 _PARSER = etree.XMLParser(
     resolve_entities=False, no_network=True, load_dtd=False, dtd_validation=False,
@@ -126,6 +126,7 @@ def _one(hdon, tree, file_name):
         "subtotal": take(_child(ttoan, "TgTCThue"), "subtotal", "TToan/TgTCThue", "money", currency),
         "vat_amount": take(_child(ttoan, "TgTThue"), "vat_amount", "TToan/TgTThue", "money", currency),
         "total": take(_child(ttoan, "TgTTTBSo"), "total", "TToan/TgTTTBSo", "money", currency),
+        "total_in_words": take(_child(ttoan, "TgTTTBChu"), "total_in_words", "TToan/TgTTTBChu"),
         "authority_code": take(_child(hdon, "MCCQT"), "authority_code", "MCCQT"),
         "invoice_kind": "original",
         "related_invoice": None,

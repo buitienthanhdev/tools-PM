@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-ORG_TAX = "0012345678"
+ORG_TAX = "0012345672"
 
 
 def configure(tmp_path, **overrides):

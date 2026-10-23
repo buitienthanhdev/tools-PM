@@ -10,7 +10,7 @@ from ..ingest.sniff import decode_text
 from . import ocr, tables, text_invoice
 from .base import Doc, ExtractError, Result
 
-VERSION = "1.1.0"  # 1.1.0: nhận diện bảng bất kỳ (danh sách, bảng kê)
+VERSION = "1.2.0"  # 1.1.0: bảng bất kỳ; 1.2.0: tổng tiền bằng chữ trong văn bản
 
 
 def _trim(grid):

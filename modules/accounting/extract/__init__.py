@@ -118,7 +118,8 @@ def _persist_doc(c, org_id, f, ext_id, res, doc, org_tax_id):
     inv_status, issues = None, []
     if doc.doc_type == "invoice":
         structured = doc.invoice.get("source_format") == "xml"
-        inv_status, issues = validate.invoice(doc.invoice, doc.lines, structured)
+        inv_status, issues = validate.invoice(doc.invoice, doc.lines, structured,
+                                              ocr=str(doc.invoice.get("source_format") or "").startswith("ocr"))
         if doc.status == "NEEDS_REVIEW" and inv_status in ("VERIFIED", "VALID_EXTRACTED"):
             inv_status = "NEEDS_REVIEW"  # OCR: số học khớp vẫn chưa đủ để tin
         status = inv_status
