@@ -398,3 +398,32 @@ def test_pdf_bank_statement(env, golden):
     assert b["FT2609200001"]["txn_date"] == "2026-04-02" and b["FT2609200001"]["row_ref"].startswith("Trang 1 dòng")
     d = db.one("SELECT data_json FROM documents WHERE org_id=? AND doc_type='bank_statement'", (ctx.org_id,))
     assert '"row_boxes"' in d["data_json"]
+
+
+DOCAI = os.environ.get("AAAP_DOCAI_TEST") == "1"
+
+
+@pytest.mark.skipif(not DOCAI, reason="PaddleOCR/docling thật (venv riêng, chậm): đặt AAAP_DOCAI_TEST=1")
+def test_paddleocr_fallback_on_blurred_scan(tmp_path, golden):
+    configure(tmp_path, ocr="easyocr", paddle_ocr="auto")
+    from modules.accounting import db
+
+    ctx = new_ctx()
+    ingest(ctx, [golden / "scan_invoice_107_blur.pdf"])
+    inv = db.one("SELECT * FROM invoices WHERE org_id=?", (ctx.org_id,))
+    assert inv is not None, "EasyOCR không đọc được ảnh mờ; PaddleOCR phải nhận ra hoá đơn"
+    assert inv["number"] == "0000107" and inv["total"] == "990000" and inv["seller_tax_id"] == "0011111110"
+    assert inv["status"] not in ("VERIFIED", "VALID_EXTRACTED")  # OCR không bao giờ tự được tin
+    ex = db.one("SELECT stats_json FROM extractions WHERE org_id=?", (ctx.org_id,))
+    assert '"ocr_engine": "paddleocr"' in ex["stats_json"]
+
+
+@pytest.mark.skipif(not DOCAI, reason="PaddleOCR/docling thật (venv riêng, chậm): đặt AAAP_DOCAI_TEST=1")
+def test_docling_reads_unruled_table(tmp_path, golden):
+    configure(tmp_path, docling="auto")
+    from modules.accounting import db
+
+    ctx = new_ctx()
+    ingest(ctx, [golden / "sao_ke_khong_ke_o.pdf"])
+    b = {r["reference"]: r["amount"] for r in db.all_("SELECT * FROM bank_transactions WHERE org_id=?", (ctx.org_id,))}
+    assert b == {"FT2612500001": "12000000", "FT2613200002": "-3300000", "FT2614800003": "95000"}

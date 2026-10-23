@@ -170,6 +170,28 @@ def table_pdf(top_lines, header, rows, bottom_lines=(), widths=None):
     return doc.tobytes(garbage=3, deflate=True)
 
 
+def aligned_pdf(top_lines, header, rows, xs):
+    """Bảng chỉ căn cột, KHÔNG kẻ ô (pdfplumber không nhận ra; docling nhận ra)."""
+    import pymupdf as fitz
+
+    font = _font()
+    kw = {"fontname": "arial", "fontfile": font} if font else {}
+    doc = fitz.open()
+    page = doc.new_page(width=842, height=595)
+    y = 50
+    for ln in top_lines:
+        page.insert_text((40, y), ln, fontsize=11, **kw)
+        y += 20
+    y += 10
+    for row in [header] + rows:
+        for x, v in zip(xs, row):
+            if v:
+                page.insert_text((x, y), str(v), fontsize=10, **kw)
+        y += 22
+    doc.subset_fonts()
+    return doc.tobytes(garbage=3, deflate=True)
+
+
 def invoice_table_pdf(seller, buyer, symbol, number, date_vn, items, vat_rate, line_amounts=None):
     """Hoá đơn PDF có bảng dòng hàng. items: [(tên, đvt, sl, đơn giá)]; line_amounts ghi đè thành tiền (để tạo lỗi)."""
     amounts = line_amounts or [q * p for _, _, q, p in items]
@@ -340,6 +362,12 @@ def build(outdir):
     files["inv_purchase_211_line_wrong.pdf"] = invoice_table_pdf(S2, ORG, "1C26TBB", "0000211", ("26", "03", "2026"),
                                                                  [("Thùng carton", "Cái", 3, 100000), ("Băng keo", "Cuộn", 5, 20000)], 10,
                                                                  line_amounts=[330000, 100000])
+    files["sao_ke_khong_ke_o.pdf"] = aligned_pdf(
+        ["NGÂN HÀNG TMCP MẪU THỬ — SAO KÊ TÀI KHOẢN", "Từ ngày 01/05/2026 đến ngày 31/05/2026"],
+        ["Ngày giao dịch", "Số tham chiếu", "Diễn giải", "Ghi nợ", "Ghi có"],
+        [["05/05/2026", "FT2612500001", "Thu tien hang", "", "12.000.000"],
+         ["12/05/2026", "FT2613200002", "Chi phi dien nuoc", "3.300.000", ""],
+         ["28/05/2026", "FT2614800003", "Lai tien gui", "", "95.000"]], [40, 150, 290, 520, 640])
     files["sao_ke_pdf_042026.pdf"] = table_pdf(
         ["NGÂN HÀNG TMCP MẪU THỬ — SAO KÊ TÀI KHOẢN", f"Chủ tài khoản: {ORG['name']}", "Từ ngày 01/04/2026 đến ngày 30/04/2026"],
         ["Ngày giao dịch", "Số tham chiếu", "Diễn giải", "Ghi nợ", "Ghi có", "Số dư"],

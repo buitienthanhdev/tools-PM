@@ -63,7 +63,7 @@ def main(out_dir=None):
             ok += e["status"] in ("OK", "PARTIAL")
     metrics["document_parsing_success_rate"] = round(ok / supported, 4)
     metrics["malicious_or_unsupported_rejected"] = f"{rejected_ok}/{len(EXPECTED['rejected'])}"
-    metrics["note_parsing"] = "PARTIAL tính là đọc được; encrypted.pdf là thất bại có chủ đích (không có mật khẩu)."
+    metrics["note_parsing"] = "PARTIAL tính là đọc được; encrypted.pdf (không có mật khẩu) và corrupt_excel.xls là thất bại có chủ đích."
 
     # 2. Hoá đơn
     inv = {r["n"]: r for r in db.all_("SELECT i.*, f.original_name n FROM invoices i JOIN files f ON f.id=i.file_id WHERE i.org_id=?", (org,))}

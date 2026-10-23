@@ -21,8 +21,8 @@ def configure(tmp_path, **overrides):
     cfg = hubcfg.get()
     cfg["auto_approve"] = True
     cfg.pop("admin_password", None)
-    cfg["accounting"] = {"enabled": True, "antivirus": "off", "ocr": "off", "llm_planner": False,
-                         "max_zip_ratio": 200, **overrides}
+    cfg["accounting"] = {"enabled": True, "antivirus": "off", "ocr": "off", "llm_planner": False, "paddle_ocr": "off",
+                         "docling": "off", "max_zip_ratio": 200, **overrides}
     auth.USERS_PATH = str(tmp_path / "users.json")
     auth.SECRET_PATH = str(tmp_path / "secret.key")
     auth.SETUP_CODE_PATH = str(tmp_path / "code.txt")

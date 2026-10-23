@@ -7,10 +7,10 @@ from pathlib import Path
 
 from .. import settings
 from ..ingest.sniff import decode_text
-from . import ocr, tables, text_invoice
+from . import docai, ocr, tables, text_invoice
 from .base import Doc, ExtractError, Result
 
-VERSION = "1.2.0"  # 1.1.0: bảng bất kỳ; 1.2.0: tổng tiền bằng chữ trong văn bản
+VERSION = "1.3.0"  # 1.1: bảng bất kỳ; 1.2: tổng tiền bằng chữ; 1.3: PaddleOCR dự phòng cho ảnh
 
 
 def _trim(grid):
@@ -199,7 +199,8 @@ def textfile(data, file_name):
 
 
 def image(data, file_name):
-    if not ocr.available():
+    paddle_ok = docai.available("ocr") and settings.get()["ocr"] != "off"
+    if not ocr.available() and not paddle_ok:
         res = Result("image_ocr", VERSION, status="PARTIAL")
         res.docs.append(Doc(doc_type="text", title=file_name, status="NEEDS_REVIEW",
                             warnings=["Ảnh chứng từ cần OCR nhưng OCR đang tắt/không khả dụng"]))
@@ -215,10 +216,20 @@ def image(data, file_name):
         raise ExtractError("bad_image", f"Ảnh hỏng: {type(e).__name__}") from e
     if im.width * im.height > 40_000_000:
         raise ExtractError("image_too_large", "Ảnh quá lớn (> 40 megapixel)")
-    lines = ocr.read_image(np.asarray(im))
-    res = Result("image_ocr", VERSION, model_id=ocr.MODEL_ID, text="\n".join(t for t, _, _ in lines),
+    lines, model = (ocr.read_image(np.asarray(im)), ocr.MODEL_ID) if ocr.available() else ([], None)
+    text = "\n".join(t for t, _, _ in lines)
+    inv = text_invoice.extract([(1, lines)], file_name, "ocr_image", base_conf=0.75) if text_invoice.looks_like_invoice(text) else None
+    if inv is None and paddle_ok:  # dự phòng PaddleOCR (ảnh mờ / không có EasyOCR)
+        buf = io.BytesIO()
+        im.save(buf, "PNG")
+        alt, alt_model = docai.ocr_image(buf.getvalue())
+        if alt is not None:
+            alt_text = "\n".join(t for t, _, _ in alt)
+            alt_inv = text_invoice.extract([(1, alt)], file_name, "ocr_image", base_conf=0.7) if text_invoice.looks_like_invoice(alt_text) else None
+            if alt_inv is not None or not lines:
+                lines, text, inv, model = alt, alt_text, alt_inv, alt_model
+    res = Result("image_ocr", VERSION, model_id=model, text=text,
                  stats={"width": im.width, "height": im.height, "lines": len(lines)})
-    inv = text_invoice.extract([(1, lines)], file_name, "ocr_image", base_conf=0.75) if text_invoice.looks_like_invoice(res.text) else None
     res.docs.append(inv or Doc(doc_type="text", title=file_name, status="NEEDS_REVIEW",
                                warnings=["Văn bản từ OCR — cần kiểm duyệt"]))
     return res

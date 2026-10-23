@@ -17,6 +17,10 @@ DEFAULTS = {
     "max_sheet_rows": 200000,
     "antivirus": "auto",  # auto | defender | off
     "ocr": "auto",  # auto | easyocr | off
+    "paddle_ocr": "auto",  # auto | off — dự phòng OCR (venv riêng, xem extract/docai.py)
+    "docling": "auto",  # auto | off — dự phòng đọc bảng PDF không kẻ ô (venv riêng)
+    "docai_python": "",  # trống = <thư mục cha của Hub>/venvs/docai/Scripts/python.exe
+    "max_pdf_table_pages": 50,
     "llm_planner": True,  # False: chỉ dùng bộ lập kế hoạch theo quy tắc
     "planner_model": "",  # trống = models.genreport
     "cloud_ai_allowed": False,  # không gửi chứng từ ra AI ngoài máy chủ

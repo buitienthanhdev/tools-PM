@@ -22,6 +22,43 @@ TOTAL_LABELS = [
 ]
 
 
+# Hoá đơn song ngữ: phần tiếng Anh không dấu nên OCR đọc ổn định hơn phần tiếng Việt → dùng làm mốc nhãn
+EN_HINTS = [("total payment", "tong tien thanh toan"), ("vat amount", "tien thue gtgt"), ("total amount excl", "cong tien hang"),
+            ("amount in words", "so tien viet bang chu"), ("vat rate", "thue suat"), ("tax code", "ma so thue"),
+            ("company name", "ten don vi"), ("seller", "don vi ban hang"), ("buyer", "ho ten nguoi mua"), ("serial", "ky hieu"),
+            ("no", "so"), ("date", "ngay"), ("address", "dia chi")]
+
+
+def _known_labels():
+    labels = {*SELLER_LABELS, *BUYER_PERSON_LABELS, *BUYER_LABELS, "ma so thue", "ky hieu", "mau so", "thue suat",
+              "so tien viet bang chu", "ma cua co quan thue", "dia chi"}
+    for _, ls in TOTAL_LABELS:
+        labels.update(ls)
+    return sorted((x for x in labels if len(x) >= 6), key=len, reverse=True)
+
+
+def repair_ocr_label(f):
+    """Dòng OCR (đã bỏ dấu): đưa nhãn bị đọc sai ('ky hiu', 's6 no') về nhãn chuẩn để bộ đọc theo nhãn nhận ra."""
+    from rapidfuzz import fuzz
+
+    head = f.split(":")[0] if ":" in f else f[:40]
+    for en, vi in EN_HINTS:
+        if re.search(r"\b" + re.escape(en) + r"\b", head):
+            return f if f.startswith(vi) else f"{vi} {f}"
+    best, score = None, 0
+    for lbl in _known_labels():
+        if f.startswith(lbl):
+            return f
+        for w in (len(lbl) - 1, len(lbl), len(lbl) + 1):
+            sc = fuzz.ratio(f[:w], lbl)
+            if sc > score:
+                best, score = (lbl, w), sc
+    if best and score >= 85:
+        lbl, w = best
+        return f"{lbl} {f[w:].lstrip()}"
+    return f
+
+
 def looks_like_invoice(text):
     f = fold(text[:5000])
     return any(m in f for m in INVOICE_MARKERS) and ("ma so thue" in f or "tax code" in f)
@@ -70,6 +107,8 @@ def extract(pages, file_name, method, locate=None, currency="VND", base_conf=0.9
             f = fold(raw)
             if not f:
                 continue
+            if ocr:
+                f = repair_ocr_label(f)
             if any(f.startswith(lbl) for lbl in SELLER_LABELS):
                 section = "seller"
                 v = _value_after_colon(raw)
