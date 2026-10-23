@@ -3,11 +3,11 @@
 import pymupdf as fitz
 
 from .. import settings
-from . import ocr, text_invoice
+from . import ocr, pdf_tables, text_invoice
 from .base import Doc, ExtractError, Result
 
 PARSER = "pdf"
-VERSION = "1.1.0"  # 1.1.0: tổng tiền bằng chữ
+VERSION = "1.2.0"  # 1.1.0: tổng tiền bằng chữ; 1.2.0: bảng (dòng hàng, sao kê PDF) qua pdfplumber
 MIN_TEXT_CHARS = 25
 
 
@@ -58,8 +58,23 @@ def extract(data, file_name):
     if text_invoice.looks_like_invoice(res.text):
         inv = text_invoice.extract(pages, file_name, method, locate=None if method.startswith("ocr") else locate,
                                    base_conf=0.75 if method.startswith("ocr") else 0.9)
+    tabs = []
+    if texts and len(ocr_pages) < len(pages):
+        try:
+            tabs = pdf_tables.extract(data, file_name)
+        except Exception as e:  # bảng là phần bổ sung: lỗi đọc bảng không làm hỏng phần văn bản
+            res.stats["table_error"] = type(e).__name__
+    res.stats["tables"] = len(tabs)
     if inv:
+        lines, lfields, used = pdf_tables.invoice_lines(tabs, inv.invoice.get("currency") or "VND")
+        if lines:
+            inv.lines = lines
+            inv.fields += lfields
+            inv.data["lines_extracted"] = True
+            inv.warnings = [w for w in inv.warnings if "dòng hàng" not in w]
         res.docs.append(inv)
+    elif tabs and (tdocs := pdf_tables.table_docs(tabs, file_name)):
+        res.docs += tdocs
     else:
         d = Doc(doc_type="text", title=file_name, data={"pages": doc.page_count})
         if scan_skipped:

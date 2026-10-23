@@ -134,6 +134,54 @@ def text_pdf(lines):
     return doc.tobytes(garbage=3, deflate=True)
 
 
+def _vn(n):
+    return f"{n:,.0f}".replace(",", ".")
+
+
+def table_pdf(top_lines, header, rows, bottom_lines=(), widths=None):
+    """PDF có lớp chữ: các dòng chữ, một bảng kẻ ô (giống hoá đơn/sao kê thật), các dòng chữ bên dưới."""
+    import pymupdf as fitz
+
+    font = _font()
+    doc = fitz.open()
+    page = doc.new_page(width=842, height=595)  # A4 ngang để bảng đủ rộng
+    kw = {"fontname": "arial", "fontfile": font} if font else {}
+    y = 40
+    for ln in top_lines:
+        page.insert_text((40, y), ln, fontsize=10, **kw)
+        y += 17
+    widths = widths or [762 / len(header)] * len(header)
+    y += 6
+    for r, row in enumerate([header] + rows):
+        x = 40
+        for c, val in enumerate(row):
+            rect = fitz.Rect(x, y, x + widths[c], y + 20)
+            page.draw_rect(rect, color=(0, 0, 0), width=0.6)
+            text = "" if val is None else str(val)
+            if text:
+                page.insert_text((x + 3, y + 14), text, fontsize=8.5, **kw)
+            x += widths[c]
+        y += 20
+    y += 18
+    for ln in bottom_lines:
+        page.insert_text((40, y), ln, fontsize=10, **kw)
+        y += 17
+    doc.subset_fonts()
+    return doc.tobytes(garbage=3, deflate=True)
+
+
+def invoice_table_pdf(seller, buyer, symbol, number, date_vn, items, vat_rate, line_amounts=None):
+    """Hoá đơn PDF có bảng dòng hàng. items: [(tên, đvt, sl, đơn giá)]; line_amounts ghi đè thành tiền (để tạo lỗi)."""
+    amounts = line_amounts or [q * p for _, _, q, p in items]
+    sub = sum(amounts)
+    vat = sub * vat_rate // 100
+    head = invoice_text_lines(seller, buyer, symbol, number, date_vn, sub, vat_rate, vat, sub + vat)
+    top, bottom = head[:10], head[10:]
+    rows = [[i + 1, n, u, _vn(q), _vn(p), _vn(a), f"{vat_rate}%"] for i, ((n, u, q, p), a) in enumerate(zip(items, amounts))]
+    return table_pdf(top, ["STT", "Tên hàng hóa, dịch vụ", "Đơn vị tính", "Số lượng", "Đơn giá", "Thành tiền", "Thuế suất"],
+                     rows, bottom, widths=[40, 290, 80, 70, 100, 120, 62])
+
+
 def scanned_pdf(lines, blur=0.0):
     import pymupdf as fitz
     from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -283,10 +331,22 @@ def build(outdir):
         b"<TToan><TgTTTBSo>1</TgTTTBSo></TToan></NDHDon></DLHDon></HDon>")
 
     # ── Hoá đơn PDF ──────────────────────────────────────────────
-    files["inv_sale_011.pdf"] = text_pdf(invoice_text_lines(ORG, C1, "1C26TAB", "0000011", ("15", "03", "2026"),
-                                                            25000000, 10, 2500000, 27500000))
-    files["inv_purchase_210.pdf"] = text_pdf(invoice_text_lines(S2, ORG, "1C26TBB", "0000210", ("25", "03", "2026"),
-                                                                3000000, 10, 300000, 3300000))
+    files["inv_sale_011.pdf"] = invoice_table_pdf(ORG, C1, "1C26TAB", "0000011", ("15", "03", "2026"),
+                                                  [("Thiết bị đo kiểm A", "Bộ", 2, 12500000)], 10)
+    files["inv_purchase_210.pdf"] = invoice_table_pdf(S2, ORG, "1C26TBB", "0000210", ("25", "03", "2026"),
+                                                      [("Cước vận chuyển nội thành", "Chuyến", 4, 500000),
+                                                       ("Bốc xếp hàng hoá", "Lần", 10, 100000)], 10)
+    # Dòng 1 ghi thành tiền 330.000 trong khi 3 × 100.000 = 300.000 (cộng tiền hàng vẫn khớp tổng các dòng)
+    files["inv_purchase_211_line_wrong.pdf"] = invoice_table_pdf(S2, ORG, "1C26TBB", "0000211", ("26", "03", "2026"),
+                                                                 [("Thùng carton", "Cái", 3, 100000), ("Băng keo", "Cuộn", 5, 20000)], 10,
+                                                                 line_amounts=[330000, 100000])
+    files["sao_ke_pdf_042026.pdf"] = table_pdf(
+        ["NGÂN HÀNG TMCP MẪU THỬ — SAO KÊ TÀI KHOẢN", f"Chủ tài khoản: {ORG['name']}", "Từ ngày 01/04/2026 đến ngày 30/04/2026"],
+        ["Ngày giao dịch", "Số tham chiếu", "Diễn giải", "Ghi nợ", "Ghi có", "Số dư"],
+        [["02/04/2026", "FT2609200001", "Thu tien ban hang", "", "35.000.000", "129.278.000"],
+         ["15/04/2026", "FT2610500002", "Chi luong thang 4", "19.000.000", "", "110.278.000"],
+         ["20/04/2026", "FT2611000003", "Chi thue van phong", "6.000.000", "", "104.278.000"]],
+        widths=[100, 130, 252, 90, 90, 100])
     scan_lines = invoice_text_lines(S1, ORG, "1C26TAA", "0000106", ("26", "03", "2026"), 1500000, 10, 150000, 1650000)
     files["scan_invoice_106.pdf"], files["scan_invoice_106.png"] = scanned_pdf(scan_lines)
     files["scan_invoice_107_blur.pdf"], _ = scanned_pdf(
@@ -447,6 +507,7 @@ EXPECTED = {
         "inv_adjust_101.xml": "VERIFIED", "inv_adjust_noref.xml": "NEEDS_EVIDENCE",
         "inv_usd_norate.xml": "NEEDS_EVIDENCE", "inv_usd_rate.xml": "VERIFIED", "inv_injection_205.xml": "VERIFIED",
         "inv_sale_011.pdf": "VALID_EXTRACTED", "inv_purchase_210.pdf": "VALID_EXTRACTED",
+        "inv_purchase_211_line_wrong.pdf": "NEEDS_REVIEW",
         "inv_purchase_108_bad_mst.xml": "NEEDS_REVIEW", "inv_purchase_109_words_wrong.xml": "CONFLICTED",
     },
     "invoice_totals": {"inv_purchase_101.xml": "4675000", "inv_sale_011.xml": "27500000", "inv_sale_011.pdf": "27500000",

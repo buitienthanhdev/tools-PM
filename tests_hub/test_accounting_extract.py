@@ -364,3 +364,37 @@ def test_legacy_xls_read(env, golden):
     assert e["PT401"]["amount"] == "35000000" and e["PC402"]["amount"] == "-19000000" and e["PT401"]["entry_date"] == "2026-04-02"
     april = next(m for m in analysis.monthly_summary(ctx.org_id, ids)["months"] if m["month"] == "2026-04")
     assert april["cash_in"] == 35000000 and april["cash_out"] == 25000000
+
+
+def test_pdf_invoice_line_items(env, golden):
+    import json as _json
+
+    from modules.accounting import db
+
+    ctx = new_ctx()
+    ingest(ctx, [golden / "inv_purchase_210.pdf", golden / "inv_purchase_211_line_wrong.pdf"])
+    inv = {r["number"]: r for r in db.all_("SELECT * FROM invoices WHERE org_id=?", (ctx.org_id,))}
+    ok = inv["0000210"]
+    lines = db.all_("SELECT * FROM invoice_lines WHERE invoice_id=? ORDER BY line_no", (ok["id"],))
+    assert [(x["description"], x["quantity"], x["unit_price"], x["amount"]) for x in lines] == [
+        ("Cước vận chuyển nội thành", "4", "500000", "2000000"), ("Bốc xếp hàng hoá", "10", "100000", "1000000")]
+    assert ok["status"] == "VALID_EXTRACTED"
+    f = db.one("SELECT * FROM fields WHERE document_id=? AND field_name='line1.amount'", (ok["document_id"],))
+    loc = _json.loads(f["source_location_json"])
+    assert f["extraction_method"] == "pdf_table" and loc["page"] == 1 and len(loc["bbox"]) == 4
+    d = db.one("SELECT data_json FROM documents WHERE id=?", (ok["document_id"],))
+    assert '"lines_extracted": true' in d["data_json"]
+    bad = inv["0000211"]
+    assert bad["status"] == "NEEDS_REVIEW" and "line1.amount" in bad["issues_json"]  # 3 × 100.000 ≠ 330.000
+
+
+def test_pdf_bank_statement(env, golden):
+    from modules.accounting import db
+
+    ctx = new_ctx()
+    ingest(ctx, [golden / "sao_ke_pdf_042026.pdf"])
+    b = {r["reference"]: r for r in db.all_("SELECT * FROM bank_transactions WHERE org_id=?", (ctx.org_id,))}
+    assert b["FT2609200001"]["amount"] == "35000000" and b["FT2610500002"]["amount"] == "-19000000"
+    assert b["FT2609200001"]["txn_date"] == "2026-04-02" and b["FT2609200001"]["row_ref"].startswith("Trang 1 dòng")
+    d = db.one("SELECT data_json FROM documents WHERE org_id=? AND doc_type='bank_statement'", (ctx.org_id,))
+    assert '"row_boxes"' in d["data_json"]
