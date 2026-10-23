@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 
 from .. import db, extract, money, storage
-from ..engine import analysis, duplicates, journal, proposals, reconcile, workbook
+from ..engine import analysis, duplicates, journal, proposals, reconcile, tabular, workbook
 from ..extract.base import fold
 from . import review
 from .schema import validate
@@ -89,7 +89,13 @@ def _m(v):
 
 
 def _direction_param(run, direction):
-    """Lọc theo chiều mua/bán chỉ khi biết MST tổ chức; nếu không → không lọc, cảnh báo và hỏi lại (không trả rỗng âm thầm)."""
+    """Lọc theo chiều mua/bán chỉ khi biết MST tổ chức; nếu không → không lọc, cảnh báo và hỏi lại (không trả rỗng âm thầm).
+    AI bỏ trống tham số nhưng câu lệnh nói rõ "mua vào"/"bán ra" → theo câu lệnh."""
+    if direction in (None, ""):
+        f = fold(run.task["command"])
+        buy = any(w in f for w in ("mua vao", "dau vao"))
+        sell = any(w in f for w in ("ban ra", "dau ra"))
+        direction = "purchase" if buy and not sell else "sale" if sell and not buy else None
     if direction not in ("sale", "purchase"):
         return None
     if not run.org.get("tax_id"):
@@ -97,6 +103,19 @@ def _direction_param(run, direction):
         run.ask("Hãy khai báo mã số thuế của tổ chức (Cài đặt) để hệ thống phân biệt hoá đơn mua vào và bán ra.")
         return None
     return direction
+
+
+def _check_org_relation(run, invs):
+    """Hoá đơn không có MST tổ chức ở bên bán lẫn bên mua → nói rõ thay vì trả kết quả rỗng âm thầm."""
+    if not invs or not run.org.get("tax_id"):
+        return
+    unrelated = [i for i in invs if i["direction"] == "unrelated"]
+    if len(unrelated) == len(invs):
+        run.warn(f"Không hoá đơn nào có MST của tổ chức ({run.org['tax_id']}) ở bên bán hoặc bên mua")
+        run.ask(f"MST của tổ chức trong Cài đặt là {run.org['tax_id']}, nhưng không hoá đơn nào mang MST này. "
+                "Hãy kiểm tra lại MST, hoặc xác nhận đây là hoá đơn của đơn vị khác.")
+    elif unrelated:
+        run.warn(f"{len(unrelated)}/{len(invs)} hoá đơn không có MST của tổ chức — không tính là mua vào hay bán ra")
 
 
 def _files(run, kinds=None):
@@ -164,6 +183,8 @@ INVOICE_COLS = [
     {"key": "issues", "label": "Vấn đề"},
 ]
 DIRECTION_VN = {"sale": "Bán ra", "purchase": "Mua vào", "unknown": "Chưa rõ", "unrelated": "Không liên quan"}
+ST_VN = {"VERIFIED": "Hợp lệ", "VALID_EXTRACTED": "Hợp lệ (văn bản)", "REVIEWED": "Đã kiểm duyệt", "NEEDS_REVIEW": "Cần kiểm duyệt",
+         "NEEDS_EVIDENCE": "Thiếu chứng cứ", "CONFLICTED": "Mâu thuẫn", "UNKNOWN": "Chưa rõ"}
 
 
 def _inv_row(i):
@@ -192,7 +213,23 @@ def validate_invoices(run, p):
     by = {}
     for i in invs:
         by[i["status"]] = by.get(i["status"], 0) + 1
-    return {"summary": f"{len(invs)} hoá đơn: " + ", ".join(f"{k} {v}" for k, v in sorted(by.items())),
+    _check_org_relation(run, invs)
+    if invs:
+        ok_n = sum(v for k, v in by.items() if k in analysis.VERIFIED_SET)
+        parts = [f"{ok_n} hợp lệ"] + [f"{v} {ST_VN.get(k, k).lower()}" for k, v in sorted(by.items()) if k not in analysis.VERIFIED_SET]
+        answer = f"Đã kiểm tra {len(invs)} hoá đơn: " + ", ".join(parts) + "."
+        probs = [f"{i['series'] or ''}/{i['number'] or '?'}: {i['issues'][0]['message']}" for i in invs if i["issues"]][:5]
+        if len(invs) <= 3:  # ít hoá đơn: nêu luôn nội dung chính đã đọc được
+            answer += " " + " ".join(
+                f"HĐ {i['series'] or ''}/{i['number'] or '?'} ngày {i['issue_date'] or '?'}, người bán {i['seller_name'] or '?'} "
+                f"(MST {i['seller_tax_id'] or '?'}), tổng {money.vn(i['total']) if i['total'] else '?'} {i['currency'] or 'VND'} — "
+                f"{ST_VN.get(i['status'], i['status']).lower()}" + (" (đọc bằng OCR, cần đối chiếu bản gốc)" if str(i["source_format"] or "").startswith("ocr") else "")
+                + "." for i in invs)
+        if probs:
+            answer += " Vấn đề chính: " + "; ".join(probs) + ("…" if sum(1 for i in invs if i["issues"]) > 5 else "") + "."
+    else:
+        answer = "Không có hoá đơn nào trong các file của phiên này."
+    return {"summary": answer, "answer": answer,
             "data": {"count": len(invs), "by_status": by},
             "sections": [{"name": "Hoá đơn", "title": "Danh sách hoá đơn và kết quả kiểm tra", "columns": INVOICE_COLS, "rows": rows},
                          {"name": "Ngoại lệ hoá đơn", "title": "Các vấn đề phát hiện trên hoá đơn", "columns": [
@@ -205,7 +242,7 @@ def validate_invoices(run, p):
 @tool(name="detect_duplicates", description="Phát hiện trùng file, trùng hoá đơn (theo khoá nghiệp vụ), xung đột khoá, nghi trùng, dòng sao kê trùng, nghi chi trùng.",
       task_class=READ_ONLY, params=obj(), side_effects="creates review items (idempotent)")
 def detect_duplicates(run, p):
-    groups = duplicates.detect(run.ctx.org_id, run.file_ids, int(run.settings["date_tolerance_days"]))
+    groups = duplicates.detect(run.ctx.org_id, run.file_ids, int(run.settings["date_tolerance_days"]), run.task["conversation_id"])
     rows = []
     for gi, g in enumerate(groups, start=1):
         ev = g.get("evidence") or []
@@ -215,7 +252,14 @@ def detect_duplicates(run, p):
         if g["status"] != "DUPLICATE" or g["type"] == "INVOICE_DUPLICATE":
             target = (g.get("invoice_ids") or g.get("bank_ids") or g.get("file_ids") or ["?"])
             review.open_item(run, f"dup_{g['type'].lower()}", "group", "|".join(sorted(target)), g["reason"][:200], g)
-    return {"summary": f"{len(groups)} nhóm trùng/nghi trùng" if groups else "Không phát hiện trùng lặp",
+    names = {"FILE_DUPLICATE": "file tải trùng", "INVOICE_DUPLICATE": "hoá đơn trùng", "INVOICE_KEY_CONFLICT": "hoá đơn trùng số nhưng khác tiền",
+             "INVOICE_SUSPECTED": "nghi trùng hoá đơn", "ROW_DUPLICATE": "dòng sao kê lặp", "SUSPECTED_DOUBLE_PAYMENT": "nghi chi trùng"}
+    by_type = {}
+    for g in groups:
+        by_type[g["type"]] = by_type.get(g["type"], 0) + 1
+    dup_txt = ("Trùng lặp: " + ", ".join(f"{v} {names.get(k, k)}" for k, v in by_type.items()) + " (chi tiết ở sheet 'Trùng lặp').") if groups \
+        else "Không phát hiện trùng lặp."
+    return {"summary": dup_txt, "answer": dup_txt,
             "data": {"groups": len(groups), "types": sorted({g['type'] for g in groups})},
             "sections": [{"name": "Trùng lặp", "title": "Trùng lặp và nghi vấn (không kết luận trùng chỉ vì cùng số tiền)", "columns": [
                 {"key": "group", "label": "Nhóm", "type": "number"}, {"key": "type", "label": "Loại"}, {"key": "status", "label": "Trạng thái"},
@@ -233,6 +277,7 @@ def _file_id_by_name(run, name):
       task_class=TRANSFORM, params=obj({"direction": {"type": "string", "enum": ["sale", "purchase", "all"]}}))
 def summarize_invoices(run, p):
     rows_all = analysis.invoices(run.ctx.org_id, run.file_ids)
+    _check_org_relation(run, rows_all)
     direction = _direction_param(run, p.get("direction"))
     if direction:
         rows_all = [r for r in rows_all if r["direction"] == direction]
@@ -263,7 +308,31 @@ def summarize_invoices(run, p):
             {"key": "count", "label": "Số nhóm", "type": "number"}, {"key": "taxable", "label": "Giá tính thuế", "type": "money"},
             {"key": "vat", "label": "Tiền thuế", "type": "money"}], "rows": vat_rows, "totals": [] if multi else ["taxable", "vat"]}]
     tot = {c: {k: _m(v) for k, v in t.items() if k != "count"} | {"count": t["count"]} for c, t in s["totals_by_currency"].items()}
-    return {"summary": "; ".join(f"{c}: {t['count']} HĐ, tổng {t['total']}" for c, t in tot.items()) or "Không có hoá đơn hợp lệ",
+    answers = []
+    per = {}
+    for c in s["by_counterparty"]:
+        e = per.setdefault((c["direction"], c["currency"]), {"n": 0, "subtotal": money.ZERO, "vat": money.ZERO, "total": money.ZERO})
+        e["n"] += c["count"] - c["unverified_count"]
+        for k in ("subtotal", "vat", "total"):
+            e[k] += c[k]
+    for (d, cur), e in sorted(per.items()):
+        if not e["n"]:
+            continue
+        what = {"purchase": "Hoá đơn mua vào", "sale": "Hoá đơn bán ra"}.get(d, f"Hoá đơn {DIRECTION_VN.get(d, d).lower()}")
+        vat_word = {"purchase": "thuế GTGT đầu vào", "sale": "thuế GTGT đầu ra"}.get(d, "thuế GTGT")
+        answers.append(f"{what} đã kiểm tra: {e['n']} hoá đơn, tiền hàng {money.vn(e['subtotal'])} {cur}, "
+                       f"{vat_word} {money.vn(e['vat'])} {cur}, tổng thanh toán {money.vn(e['total'])} {cur}.")
+    unv = [r for r in rows if r["id"] in set(s["unverified_invoice_ids"])]
+    if unv:
+        vat_unv = money.sum_(money.D(r["vat_amount"]) for r in unv if r["vat_amount"])
+        answers.append(f"{len(unv)} hoá đơn còn vấn đề (cần kiểm duyệt/mâu thuẫn) chưa được cộng — thuế GTGT ghi trên các hoá đơn này: "
+                       f"{money.vn(vat_unv)}. Xem sheet 'Theo đối tượng' và mục Kiểm duyệt.")
+    if not answers:
+        answers.append("Không có hoá đơn nào đã qua kiểm tra để tổng hợp" + (f" ({DIRECTION_VN[direction].lower()})" if direction else "") + ".")
+    if direction == "purchase" and per:
+        run.note("Số thuế GTGT đầu vào ở đây là số ghi trên hoá đơn đã kiểm tra; điều kiện khấu trừ (thanh toán không dùng tiền mặt, "
+                 "hoá đơn hợp pháp…) cần kế toán xác nhận.")
+    return {"summary": " ".join(answers), "answer": " ".join(answers),
             "data": {"totals_by_currency": tot, "dropped_duplicates": len(dropped)}, "sections": sections}
 
 
@@ -549,15 +618,187 @@ def profile_tables(run, p):
     return {"summary": "; ".join(answers), "data": {"tables": len(tabs), "rows": [t["rows"] for t in tabs]}, "sections": sections}
 
 
+FILTER_SCHEMA = {"type": "array", "maxItems": 5, "items": {"type": "object", "required": ["column", "value"], "properties": {
+    "column": {"type": "string", "maxLength": 80}, "op": {"type": "string", "enum": list(tabular.FILTER_OPS)},
+    "value": {"type": ["string", "number"]}}}}
+
+
+@tool(name="analyze_table", description="Tính toán trên bảng dữ liệu bất kỳ (bảng kê bán hàng, danh sách sinh viên/nhân viên, bảng lương…): "
+      "đếm (count), tổng (sum), trung bình (avg), nhỏ/lớn nhất (min/max), top N cao/thấp nhất (top/bottom), liệt kê dòng thoả điều kiện (list); "
+      "có lọc (filters: cột, op eq/ne/contains/gt/gte/lt/lte, giá trị) và nhóm theo cột (group_by; 'tháng'/'quý'/'năm' suy ra từ cột ngày). "
+      "Tên cột viết theo lời người dùng, hệ thống tự ánh xạ sang cột thật. Dùng cho: 'có bao nhiêu sinh viên nữ', 'tổng doanh thu theo mặt hàng', "
+      "'ai điểm cao nhất', 'lọc danh sách…', 'doanh thu tháng 5'.",
+      task_class=READ_ONLY, params=obj({
+          "operation": {"type": "string", "enum": list(tabular.OPS)},
+          "value_column": {"type": ["string", "null"], "maxLength": 80},
+          "group_by": {"type": ["string", "null"], "maxLength": 80},
+          "filters": FILTER_SCHEMA,
+          "limit": {"type": ["integer", "null"], "minimum": 1, "maximum": 5000},
+          "sort": {"type": ["string", "null"], "enum": ["asc", "desc", None]},
+          "subject": {"type": ["string", "null"], "maxLength": 40}}, ["operation"]))
+def analyze_table(run, p):
+    op = p["operation"]
+    try:
+        res = tabular.analyze(run.ctx.org_id, run.file_ids, op, p.get("value_column"), p.get("group_by"),
+                              p.get("filters") or [], p.get("limit"), p.get("sort") or "desc")
+    except tabular.ColumnNotFound as e:
+        raise NeedsInput(str(e)) from e
+    if not res["results"]:
+        raise NeedsInput("Không có bảng dữ liệu có dòng tiêu đề trong các file của phiên này.")
+    for n in res["notes"]:
+        run.note(n)
+    subject = re.sub(r"[^\w\s/-]", "", str(p.get("subject") or "")).strip()[:40] or "dòng"
+    answers, sections = [], []
+    for r in res["results"]:
+        where = f"bảng '{r['sheet']}'" if r["sheet"] not in (None, "CSV", "TSV") else f"file '{r['file']}'"
+        cond = tabular.describe_filters(r["filters"])
+        cond_txt = f" có {cond}" if cond else ""
+        vc = r["value_column"]
+        if r["non_numeric"]:
+            run.warn(f"{where}: {r['non_numeric']} ô trong cột '{vc}' không phải số — không được tính")
+        src = _src(r["file_id"], r["sheet"])
+        if r.get("groups") is not None:
+            g = r["groups"]
+            measure = "count" if op in ("count", "list") else ("sum" if op in ("top", "bottom") else op)
+            label = {"count": "Số dòng", "sum": f"Tổng {vc}", "avg": f"Trung bình {vc}", "min": f"Giá trị nhỏ nhất của một dòng '{vc}'",
+                     "max": f"Giá trị lớn nhất của một dòng '{vc}'"}[measure]
+            if op in ("top", "bottom"):
+                label = f"{'Cao' if op == 'top' else 'Thấp'} nhất theo tổng {vc}"
+            parts = [f"{x['key']}: {x['count'] if measure == 'count' else money.vn(x[measure])}" for x in g[:8]]
+            more = f" … (+{len(g) - 8} nhóm)" if len(g) > 8 else ""
+            ans = f"{label} theo '{r['group_by']}'{cond_txt} ({where}): " + "; ".join(parts) + more
+            if measure != "count" and r["sum"] is not None and op in ("sum", "top", "bottom"):
+                ans += f". Tổng cộng {money.vn(r['sum'])}"
+            if op in ("max", "min", "avg") and g and vc:  # nêu thêm nhóm có tổng lớn nhất để không hiểu nhầm
+                big = max(g, key=lambda x: x["sum"] or 0)
+                ans += f". Nhóm có tổng '{vc}' lớn nhất: {big['key']} — {money.vn(big['sum'])}"
+            elif measure == "count":
+                ans += f". Tổng {money.vn(r['matched'])} {subject}"
+            answers.append(ans + ".")
+            cols = [{"key": "key", "label": r["group_by"]}, {"key": "count", "label": "Số dòng", "type": "number"}]
+            if vc:
+                cols += [{"key": "sum", "label": f"Tổng {vc}", "type": "number"}, {"key": "avg", "label": f"Trung bình {vc}", "type": "number"},
+                         {"key": "min", "label": "Nhỏ nhất", "type": "number"}, {"key": "max", "label": "Lớn nhất", "type": "number"}]
+            rows = [{"key": x["key"], "count": x["count"], **({k: _m(x[k] if k != "avg" or x[k] is None else x[k].quantize(money.to_decimal("0.01")))
+                                                               for k in ("sum", "avg", "min", "max")} if vc else {}),
+                     "_src": _src(r["file_id"], f"{r['sheet']} dòng {', '.join(map(str, x['rows'][:15]))}")} for x in g]
+            sections.append({"name": "Kết quả theo nhóm", "title": f"{label} theo {r['group_by']}{cond_txt} — {where}", "columns": cols,
+                             "rows": rows, "totals": ["count"] + (["sum"] if vc else [])})
+        elif r.get("items") is not None:
+            items = r["items"]
+            if op == "list":
+                answers.append((f"Có {money.vn(r['matched'])} {subject}{cond_txt} trên tổng {money.vn(r['total_rows'])} ({where})" if cond else
+                                f"Danh sách {money.vn(r['matched'])} {subject} ({where})") + "; danh sách nằm trong sheet 'Danh sách đã lọc'.")
+                cols = [{"key": f"c{ci}", "label": h or f"Cột {ci + 1}"} for ci, h in enumerate(r["header"])]
+                rows = [{**{f"c{ci}": (it["values"][ci] if ci < len(it["values"]) else None) for ci in range(len(r["header"]))},
+                         "_src": _src(r["file_id"], f"{r['sheet']} dòng {it['row']}")} for it in items]
+                sections.append({"name": "Danh sách đã lọc", "title": f"{r['matched']} {subject}{cond_txt} — {where}", "columns": cols, "rows": rows})
+            else:
+                word = {"top": "Cao nhất", "max": "Cao nhất", "bottom": "Thấp nhất", "min": "Thấp nhất"}[op]
+                shown = "; ".join(f"{it['label'] or 'dòng ' + str(it['row'])} — {money.vn(it['value'])}" for it in items[:5])
+                more = f" (và {len(items) - 5} dòng khác bằng giá trị này)" if op in ("min", "max") and len(items) > 5 else ""
+                answers.append(f"{word} theo '{vc}'{cond_txt} ({where}): {shown}{more}." if items else
+                               f"Không có dòng nào có giá trị số ở cột '{vc}'{cond_txt} ({where}).")
+                lab = " / ".join(r["label_columns"]) or "Dòng"
+                rows = [{"rank": k, "label": it["label"], "value": _m(it["value"]), "row": it["row"],
+                         "_src": _src(r["file_id"], f"{r['sheet']} dòng {it['row']}")} for k, it in enumerate(items, 1)]
+                sections.append({"name": "Xếp hạng", "title": f"{word} theo {vc}{cond_txt} — {where}", "columns": [
+                    {"key": "rank", "label": "#", "type": "number"}, {"key": "label", "label": lab},
+                    {"key": "value", "label": vc, "type": "number"}, {"key": "row", "label": "Dòng gốc", "type": "number"}], "rows": rows})
+        else:
+            if op == "count":
+                answers.append(f"Có {money.vn(r['matched'])} {subject}{cond_txt}" + (f" trên tổng {money.vn(r['total_rows'])}" if cond else "") + f" ({where}).")
+            else:
+                word = {"sum": "Tổng", "avg": "Trung bình", "min": "Nhỏ nhất", "max": "Lớn nhất"}[op]
+                v = r[op]
+                answers.append(f"{word} '{vc}'{cond_txt}: {money.vn(v)} (tính trên {money.vn(r['n_values'])} dòng, {where})." if v is not None
+                               else f"Không có giá trị số trong cột '{vc}'{cond_txt} ({where}).")
+            sections.append({"name": "Kết quả", "title": f"Kết quả tính toán — {where}", "columns": [
+                {"key": "metric", "label": "Chỉ số"}, {"key": "value", "label": "Giá trị", "type": "number"}],
+                "rows": [{"metric": m_, "value": _m(v_), "_src": src} for m_, v_ in (
+                    ("Số dòng thoả điều kiện", r["matched"]), ("Tổng số dòng", r["total_rows"]),
+                    *(((f"Tổng {vc}", r["sum"]), (f"Trung bình {vc}", r["avg"].quantize(money.to_decimal("0.01")) if r["avg"] is not None else None),
+                       (f"Nhỏ nhất {vc}", r["min"]), (f"Lớn nhất {vc}", r["max"])) if vc else ()))]})
+    if len(res["results"]) > 1 and op == "sum" and not p.get("group_by"):
+        tot = money.sum_(r["sum"] for r in res["results"] if r["sum"] is not None)
+        answers.append(f"Cộng {len(res['results'])} bảng: {money.vn(tot)}.")
+    return {"summary": " ".join(answers), "answer": " ".join(answers),
+            "data": {"results": len(res["results"]), "matched": [r["matched"] for r in res["results"]]}, "sections": sections}
+
+
+@tool(name="summarize_bank", description="Tổng hợp sao kê ngân hàng: tổng tiền vào, tổng tiền ra, chênh lệch, số dư đầu/cuối kỳ (nếu sao kê có cột số dư), theo tháng.",
+      task_class=READ_ONLY, params=obj())
+def summarize_bank(run, p):
+    q = ",".join("?" for _ in run.file_ids) or "''"
+    txns = db.all_(f"""SELECT b.*, f.original_name file FROM cur_bank_transactions b JOIN files f ON f.id=b.file_id
+                      WHERE b.org_id=? AND b.file_id IN ({q})""", (run.ctx.org_id, *run.file_ids))
+    if not txns:
+        raise NeedsInput("Không có giao dịch sao kê ngân hàng trong các file của phiên này.")
+    answers, rows, by_file = [], [], {}
+    for t in txns:
+        by_file.setdefault((t["file_id"], t["file"], t["currency"] or "VND"), []).append(t)
+    for (fid, fname, cur), items in by_file.items():
+        items.sort(key=lambda t: (t["txn_date"] or "", t["row_ref"] or ""))
+        amts = [money.D(t["amount"]) for t in items if t["amount"] not in (None, "")]
+        tin = money.sum_(a for a in amts if a > 0)
+        tout = -money.sum_(a for a in amts if a < 0)
+        months = {}
+        for t in items:
+            m = (t["txn_date"] or "?")[:7]
+            e = months.setdefault(m, {"in": money.ZERO, "out": money.ZERO, "n": 0})
+            a = money.D(t["amount"]) or money.ZERO
+            e["in" if a > 0 else "out"] += abs(a)
+            e["n"] += 1
+        bal = [t for t in items if t["balance"] not in (None, "")]
+        opening = closing = None
+        if bal:
+            first, last = bal[0], bal[-1]
+            opening = money.D(first["balance"]) - (money.D(first["amount"]) or money.ZERO)
+            closing = money.D(last["balance"])
+            expect = opening + tin - tout
+            if bal[0] is items[0] and bal[-1] is items[-1] and expect != closing:
+                run.warn(f"{fname}: số dư đầu + vào − ra = {money.vn(expect)} khác số dư cuối trên sao kê {money.vn(closing)} — cần kiểm tra sao kê")
+        period = f"{items[0]['txn_date'] or '?'} → {items[-1]['txn_date'] or '?'}"
+        ans = (f"Sao kê '{fname}' ({period}, {len(items)} giao dịch): tiền vào {money.vn(tin)} {cur}, tiền ra {money.vn(tout)} {cur}, "
+               f"chênh lệch {money.vn(tin - tout)}")
+        if closing is not None:
+            ans += f"; số dư đầu kỳ {money.vn(opening)}, số dư cuối kỳ {money.vn(closing)}"
+        else:
+            ans += "; sao kê không có cột số dư nên không xác định được số dư cuối kỳ"
+        answers.append(ans + ".")
+        for m, e in sorted(months.items()):
+            rows.append({"file": fname, "month": m, "count": e["n"], "inflow": _m(e["in"]), "outflow": _m(e["out"]),
+                         "net": _m(e["in"] - e["out"]), "_src": _src(fid)})
+        rows.append({"file": fname, "month": "Cả kỳ", "count": len(items), "inflow": _m(tin), "outflow": _m(tout), "net": _m(tin - tout),
+                     "opening": _m(opening), "closing": _m(closing), "_src": _src(fid)})
+    return {"summary": " ".join(answers), "answer": " ".join(answers), "data": {"files": len(by_file), "txns": len(txns)},
+            "sections": [{"name": "Tổng hợp sao kê", "title": "Tiền vào / tiền ra theo tháng", "columns": [
+                {"key": "file", "label": "File"}, {"key": "month", "label": "Tháng"}, {"key": "count", "label": "Số giao dịch", "type": "number"},
+                {"key": "inflow", "label": "Tiền vào", "type": "money"}, {"key": "outflow", "label": "Tiền ra", "type": "money"},
+                {"key": "net", "label": "Chênh lệch", "type": "money"}, {"key": "opening", "label": "Số dư đầu kỳ", "type": "money"},
+                {"key": "closing", "label": "Số dư cuối kỳ", "type": "money"}], "rows": rows,
+                "charts": [{"type": "bar", "title": "Tiền vào / ra theo tháng", "category": "month", "values": ["inflow", "outflow"]}]
+                if len(rows) > 2 else []}]}
+
+
 @tool(name="propose_journal_entries", description="Đề xuất định khoản từ hoá đơn đã kiểm tra (chỉ đề xuất, không ghi sổ). Thiếu thông tin → hỏi người dùng.",
-      task_class=PROPOSE, permission="edit_draft", params=obj({"answers": {"type": "object"}}),
+      task_class=PROPOSE, permission="edit_draft", params=obj({"answers": {"type": "object"},
+                                                               "direction": {"type": ["string", "null"], "enum": ["sale", "purchase", "all", None]}}),
       side_effects="creates PROPOSED journal entries (idempotent by invoice)", risk="medium", idempotency="idempotency_key=invoice:<id>:v1")
 def propose_journal_entries(run, p):
     invs = analysis.invoices(run.ctx.org_id, run.file_ids)
+    _check_org_relation(run, invs)
+    direction = _direction_param(run, p.get("direction"))
+    if direction:
+        others = [i for i in invs if i["direction"] != direction]
+        invs = [i for i in invs if i["direction"] == direction]
+        if others:
+            run.note(f"Chỉ định khoản hoá đơn {DIRECTION_VN[direction].lower()} theo yêu cầu; bỏ qua {len(others)} hoá đơn khác chiều")
     dups = duplicates.detect(run.ctx.org_id, run.file_ids)
     invs, dropped = analysis.dedupe_for_totals(invs, dups)
     if not invs:
-        raise NeedsInput("Không có hoá đơn trong các file đã tải lên để định khoản.")
+        raise NeedsInput("Không có hoá đơn " + (DIRECTION_VN[direction].lower() + " " if direction else "")
+                         + "trong các file đã tải lên để định khoản.")
     res = proposals.propose_for_invoices(run.ctx, [i["id"] for i in invs], task_id=run.task["id"], answers=p.get("answers") or {})
     rows = []
     for pr in res["proposed"]:
@@ -575,8 +816,15 @@ def propose_journal_entries(run, p):
                     "choices": ", ".join(f"{c['code']} {c['name']}" for c in n.get("choices", []))})
         review.open_item(run, "missing_data", "invoice", n["invoice_id"], n["question"][:200], n)
     skipped = [{"invoice": s["invoice"], "reason": s["reason"]} for s in res["skipped"]]
-    return {"summary": f"Đề xuất {len(res['proposed'])} bút toán (chưa ghi sổ); {len(res['needs_input'])} hoá đơn cần bổ sung thông tin; "
-                       f"{len(skipped)} hoá đơn chưa đủ điều kiện",
+    answer = f"Đã đề xuất {len(res['proposed'])} bút toán (chưa ghi sổ, cần người phê duyệt)"
+    if res["needs_input"]:
+        answer += f"; {len(res['needs_input'])} hoá đơn cần bạn bổ sung thông tin"
+        run.ask(f"{len(res['needs_input'])} hoá đơn cần bổ sung thông tin trước khi định khoản (ví dụ "
+                f"{res['needs_input'][0]['invoice']}: {res['needs_input'][0]['question'][:150]}) — trả lời trong mục Kiểm duyệt.")
+    if skipped:
+        answer += f"; {len(skipped)} hoá đơn chưa đủ điều kiện ({skipped[0]['invoice']}: {skipped[0]['reason'][:120]}" + (" …" if len(skipped) > 1 else "") + ")"
+    answer += "."
+    return {"summary": answer, "answer": answer,
             "data": {"proposed": [x["entry_id"] for x in res["proposed"]], "needs_input": res["needs_input"], "skipped": res["skipped"]},
             "sections": [s for s in [
                 {"name": "Đề xuất định khoản", "title": "Đề xuất định khoản (PROPOSED — chưa ghi sổ, cần phê duyệt)", "columns": [
@@ -634,15 +882,17 @@ def build_ar_ap(run, p):
             "data": {"receivable_open": money.fmt(ar), "payable_open": money.fmt(ap)}, "sections": sections}
 
 
-@tool(name="search_documents", description="Tìm kiếm từ khoá trong nội dung các chứng từ đã trích xuất của tổ chức.",
+@tool(name="search_documents", description="Tìm kiếm từ khoá trong nội dung các chứng từ đã tải lên trong phiên làm việc này.",
       task_class=READ_ONLY, params=obj({"query": {"type": "string", "maxLength": 200}}, ["query"]))
 def search_documents(run, p):
     needle = fold(p["query"])
     if len(needle) < 2:
         raise ToolInputError("Từ khoá quá ngắn")
     rows = []
-    for e in db.all_("""SELECT e.file_id, e.text_content, f.original_name FROM extractions e JOIN files f ON f.id=e.file_id
-                        WHERE e.org_id=? AND e.status IN ('OK','PARTIAL')""", (run.ctx.org_id,)):
+    q = ",".join("?" for _ in run.file_ids) or "''"
+    for e in db.all_(f"""SELECT e.file_id, e.text_content, f.original_name FROM extractions e JOIN files f ON f.id=e.file_id
+                         WHERE e.org_id=? AND e.status IN ('OK','PARTIAL') AND e.file_id IN ({q})""",
+                     (run.ctx.org_id, *run.file_ids)):
         text = e["text_content"] or ""
         for line in text.splitlines():
             if needle in fold(line):

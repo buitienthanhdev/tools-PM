@@ -379,11 +379,23 @@ def _plan(run, task):
     arts = conversation_artifacts(task["org_id"], task["conversation_id"])
     event(task["org_id"], task["id"], "info", "Đang lập kế hoạch thực hiện…")
     with telemetry.span("plan", task=task["id"]) as sp:
-        steps, questions, unsupported, source, note = planner.plan(task["command"], m, arts, policy.allowed_classes(run.ctx))
+        history = [r["command"] for r in db.all_(
+            "SELECT command FROM tasks WHERE org_id=? AND conversation_id=? AND created_at<? AND id!=? ORDER BY created_at DESC LIMIT 4",
+            (task["org_id"], task["conversation_id"], task["created_at"], task["id"]))][::-1] if task["conversation_id"] else []
+        steps, questions, unsupported, source, note = planner.plan(task["command"], m, arts, policy.allowed_classes(run.ctx), history)
         sp.set_attribute("source", source)
         sp.set_attribute("steps", len(steps))
     if note:
         event(task["org_id"], task["id"], "warning", note)
+    if not run.file_ids:
+        # Phiên chưa có chứng từ: chỉ giữ truy vấn sổ sách của tổ chức, không xử lý dữ liệu ở phiên khác
+        kept = [s for s in steps if s["tool"] in ORG_WIDE_TOOLS]
+        if len(kept) < len([s for s in steps if s["tool"] not in ("generate_excel", "generate_pdf")]) or (not steps and not questions and not unsupported):
+            questions = ["Phiên làm việc này chưa có chứng từ nào — hãy kéo thả file cần xử lý rồi gửi lại yêu cầu."] + questions
+        steps = kept + ([s for s in steps if s["tool"] in ("generate_excel", "generate_pdf")] if kept else [])
+    if not steps and not questions and run.file_ids and not unsupported:
+        # Không có phân tích phù hợp: vẫn trả báo cáo kết quả đọc chứng từ để người dùng thấy dữ liệu đã nhận diện
+        steps = [{"tool": "generate_excel", "goal": "Tạo báo cáo kết quả đọc chứng từ", "params": {}}]
     with db.tx() as c:
         c.execute("UPDATE tasks SET plan_json=?, plan_source=?, updated_at=? WHERE id=?",
                   (db.dumps({"steps": steps, "questions": questions, "unsupported": unsupported}), source, db.now(), task["id"]))
@@ -392,9 +404,6 @@ def _plan(run, task):
                 "unsupported": unsupported, "source": source})
         audit.log(c, task["org_id"], "agent", "task.plan", "task", task["id"], source=source,
                   model=planner.hubcfg.model("genreport") if source == "llm" else None, steps=[s["tool"] for s in steps])
-    if not steps and not questions and run.file_ids:
-        # Không có phân tích phù hợp: vẫn trả báo cáo kết quả đọc chứng từ để người dùng thấy dữ liệu đã nhận diện
-        steps = [{"tool": "generate_excel", "goal": "Tạo báo cáo kết quả đọc chứng từ", "params": {}}]
     if steps:
         _insert_steps(task, steps, 3)
         return True
@@ -405,6 +414,20 @@ def _plan(run, task):
         _assistant_message(task["id"])
         return False
     return True  # không có bước phân tích: vẫn tổng kết phần trích xuất
+
+
+# Không cần chứng từ của phiên: đọc sổ sách đã ghi của tổ chức; sửa báo cáo đã có trong hội thoại
+ORG_WIDE_TOOLS = ("query_accounting_database", "revise_artifact")
+NO_ANSWER_TOOLS = ("inspect_files", "extract_documents", "generate_excel", "generate_pdf", "revise_artifact", "create_review_request")
+
+
+def _has_report_content(run):
+    """Có kết quả phân tích để đưa vào file chưa (ngoài danh sách chứng từ / kết quả đọc)?"""
+    steps = [s for s in run.completed_outputs() if s["seq"] < run.step and s["tool"] not in NO_ANSWER_TOOLS]
+    if not steps:
+        return True  # chỉ có báo cáo kết quả đọc chứng từ (người dùng không yêu cầu phân tích cụ thể)
+    return any(s["status"] == "COMPLETED" and any(sec.get("rows") for sec in (s["output"] or {}).get("sections") or [])
+               for s in steps)
 
 
 def _backoff(attempt):
@@ -426,6 +449,10 @@ def _run_step(run, step):
     ok, why = policy.allow(tool, run.task["command"], policy.allowed_classes(run.ctx))
     t0 = time.time()
     try:
+        if step["tool"] in ("generate_excel", "generate_pdf") and not _has_report_content(run):
+            _finish_step(step, "SKIPPED", {"summary": "Không tạo file vì các bước phân tích không có kết quả", "sections": []}, None,
+                         "Bỏ qua tạo file: không có kết quả để đưa vào báo cáo")
+            return
         if not ok:
             raise tools.ToolInputError(f"Bị chính sách từ chối: {why}")
         if not run.ctx.can(tool.permission):
@@ -480,13 +507,14 @@ def _verify_and_finish(run):
             a = db.one("SELECT * FROM artifacts WHERE id=? AND org_id=?", (aid, org))
             if not a or not storage.verify(a["storage_path"], a["sha256"]) or not db.loads(a["validation_json"], {}).get("ok"):
                 problems.append(f"Artifact {aid[:8]} không toàn vẹn hoặc chưa qua xác minh")
-    required = [s for s in steps if s["tool"] in ("generate_excel", "revise_artifact")]
+    required = [s for s in steps if s["tool"] in ("generate_excel", "revise_artifact") and s["status"] != "SKIPPED"]
     if any(s["status"] != "COMPLETED" for s in required) or problems:
         _fail(task_id, org, "verification", "; ".join(problems) or "Không tạo được báo cáo bắt buộc")
         return
     bad = [s for s in steps if s["status"] in ("FAILED", "NEEDS_INPUT")]
     summary = {"steps": [{"seq": s["seq"], "tool": s["tool"], "status": s["status"],
-                          "summary": (s["output"] or {}).get("summary") or (s["error"] or {}).get("message")} for s in steps],
+                          "summary": (s["output"] or {}).get("summary") or (s["error"] or {}).get("message"),
+                          "answer": (s["output"] or {}).get("answer") if s["status"] == "COMPLETED" else None} for s in steps],
                "questions": [(s["error"] or {}).get("message") for s in steps if s["status"] == "NEEDS_INPUT"]}
     plan = db.loads(db.one("SELECT plan_json FROM tasks WHERE id=?", (task_id,))["plan_json"], {}) or {}
     summary["unsupported"] = plan.get("unsupported") or []
@@ -509,22 +537,46 @@ def _assistant_message(task_id):
     if not t["conversation_id"]:
         return
     summ = db.loads(t["summary_json"], {}) or {}
-    lines = []
-    head = {"COMPLETED": "Đã hoàn thành.", "PARTIALLY_COMPLETED": "Hoàn thành một phần — có bước cần bổ sung hoặc bị lỗi.",
-            "FAILED": "Không hoàn thành.", "WAITING_FOR_INPUT": "Cần thêm thông tin trước khi tiếp tục."}.get(t["status"], t["status"])
-    lines.append(head)
-    for s in summ.get("steps") or []:
-        if s["tool"] in ("inspect_files",):
+    steps = summ.get("steps") or []
+    # Đoạn đầu: câu trả lời trực tiếp (số liệu do công cụ tính, không do AI viết); sau một dòng trống: chi tiết các bước
+    answer = []
+    tools_run = {s["tool"] for s in steps if s["status"] == "COMPLETED"}
+    # Kiểm tra/trùng lặp là bước phụ khi người dùng hỏi tổng hợp, định khoản… → để ở phần chi tiết
+    asked_check = any(w in fold(t["command"]) for w in ("kiem tra", "doc ", "doc hoa don", "van de", "loi", "sai", "hop le", "check", "trung"))
+    secondary = {"validate_invoices", "detect_duplicates"} if tools_run & set(planner.NEEDS_VALIDATION) and not asked_check else set()
+    for s in steps:
+        if s["status"] != "COMPLETED" or s["tool"] in NO_ANSWER_TOOLS or s["tool"] in secondary:
             continue
-        mark = {"COMPLETED": "✓", "FAILED": "✗", "NEEDS_INPUT": "?"}.get(s["status"], "•")
-        lines.append(f"{mark} {s['summary']}")
+        a = s.get("answer") or s.get("summary")
+        if a and a not in answer:
+            answer.append(a)
+    questions = [q for q in summ.get("questions") or [] if q]
+    unsupported = summ.get("unsupported") or []
     if t["status"] == "FAILED":
-        lines.append(f"Lý do: {(db.loads(t['error_json'], {}) or {}).get('message', '')}")
-    for q in summ.get("questions") or []:
-        if q:
-            lines.append(f"❓ {q}")
-    for u in summ.get("unsupported") or []:
+        answer = [f"Không hoàn thành: {(db.loads(t['error_json'], {}) or {}).get('message', '')}"] + answer
+    elif not answer and unsupported and not questions:
+        answer = ["Yêu cầu này nằm ngoài những việc trợ lý kế toán làm được: " + " ".join(unsupported)]
+        unsupported = []
+    elif not answer and questions:
+        answer = ["Mình cần thêm thông tin để trả lời:"]
+    elif not answer:
+        answer = ["Đã xử lý xong nhưng không có kết quả phân tích nào để báo." if t["status"] == "COMPLETED"
+                  else "Chưa trả lời được yêu cầu — xem chi tiết bên dưới."]
+    lines = answer[:]
+    for q in questions:
+        lines.append(f"❓ {q}")
+    for u in unsupported:
         lines.append(f"⛔ {u}")
+    detail = []
+    for s in steps:
+        if s["tool"] in ("inspect_files",) or not s.get("summary"):
+            continue
+        if s["status"] == "COMPLETED" and s.get("summary") in answer:
+            continue
+        mark = {"COMPLETED": "✓", "FAILED": "✗", "NEEDS_INPUT": "?", "SKIPPED": "–"}.get(s["status"], "•")
+        detail.append(f"{mark} {s['summary']}")
+    if detail:
+        lines += ["", "Chi tiết:"] + detail
     with db.tx() as c:
         db.insert(c, "messages", {"id": db.new_id(), "org_id": t["org_id"], "conversation_id": t["conversation_id"],
                                   "role": "assistant", "content": "\n".join(lines)[:8000], "task_id": task_id,

@@ -7,10 +7,10 @@ Môi trường: Windows 11 Pro, Python 3.12.10, venv của Hub, RTX 5090. Chạy
 | Lệnh | Kết quả |
 | --- | --- |
 | `ruff check .` | All checks passed |
-| `pytest tests_hub -k accounting -q` | **83 passed, 3 skipped** (OCR GPU bật bằng `AAAP_OCR_TEST=1`; PaddleOCR/docling bật bằng `AAAP_DOCAI_TEST=1`) |
+| `pytest tests_hub -k accounting -q` | **90 passed, 3 skipped** (OCR GPU bật bằng `AAAP_OCR_TEST=1`; PaddleOCR/docling bật bằng `AAAP_DOCAI_TEST=1`) |
 | `AAAP_DOCAI_TEST=1 pytest tests_hub/test_accounting_extract.py -k "paddle or docling"` | 2 passed (PaddleOCR đọc ảnh mờ; docling đọc sao kê không kẻ ô) |
 | `AAAP_OCR_TEST=1 pytest tests_hub/test_accounting_extract.py -k ocr` | 1 passed (OCR thật trên GPU) |
-| `pytest -q --ignore=tests_hub/test_image_processing.py` (toàn bộ Hub) | 108 passed, 3 skipped, **3 failed** |
+| `pytest -q --ignore=tests_hub/test_image_processing.py` (toàn bộ Hub) | 115 passed, 3 skipped, **3 failed** |
 
 3 lỗi toàn bộ Hub (`test_job_owner_isolated`, `test_image_validation`, `test_tools_health_shape`) **có từ trước** (baseline trước thay đổi:
 25 passed / 3 failed, cùng 3 test): worktree không có binary Real-ESRGAN bị gitignore. Không có hồi quy do module kế toán.
@@ -61,3 +61,26 @@ trên các tình huống đã thiết kế, **không** phải độ chính xác 
 - Kịch bản C trên màn hình 390×844 (mobile): hoàn thành, panel báo cáo toàn màn hình.
 - 0 lỗi console JavaScript ở cả 3 lượt. Hai lỗi phát hiện qua staging đã sửa và có test hồi quy:
   lọc theo chiều mua/bán khi tổ chức chưa có MST trả rỗng âm thầm; ZIP trùng không gắn file con vào phiên mới.
+
+## Dùng thử như người dùng thật (staging, LLM thật, 2026-10-23) và các lỗi đã sửa
+
+~25 câu lệnh tự nhiên trên file hư cấu ngoài golden (danh sách sinh viên, bảng kê bán hàng tiêu đề 2 tầng, sao kê CSV
+kiểu ngân hàng khác, bảng lương, hoá đơn, file 50.000 dòng, scan mờ). Kết quả trước → sau khi sửa:
+
+| Lỗi phát hiện | Sau khi sửa (đối chiếu độc lập) | Test hồi quy |
+| --- | --- | --- |
+| Phiên không có file xử lý toàn bộ hoá đơn của tổ chức (kể cả phiên khác) | Hỏi người dùng tải file; danh sách file rỗng = không có dữ liệu | `test_empty_conversation_never_uses_other_sessions_files` |
+| "Định khoản hoá đơn mua vào" sinh bút toán cho hoá đơn bán ra | Lọc theo chiều yêu cầu | `test_journal_direction_follows_request` |
+| MST sai chữ số kiểm tra vẫn lưu; hoá đơn "không liên quan" trả 0 âm thầm | Từ chối khi lưu; cảnh báo + hỏi lại khi không hoá đơn nào mang MST tổ chức | `test_invalid_org_tax_id_rejected_and_unrelated_invoices_flagged` |
+| Không nói thẳng câu trả lời (người dùng production: "nói tiếng người xem nào?") | Đoạn đầu tin nhắn là câu trả lời có số liệu, chi tiết các bước ở dưới | `test_gender_count_answer_and_out_of_scope`, `test_bank_summary_and_direct_answer` |
+| Không tính được tổng/nhóm/lọc/top trên bảng bất kỳ; không hiểu "Phái" = "giới tính" | Công cụ `analyze_table` (Decimal, đồng nghĩa + RapidFuzz + theo giá trị, tháng/quý/năm từ cột ngày): 40 nữ / 80 nam; doanh thu 158.747.000; Nước mắm 48.735.000 cao nhất; SV990120 điểm 9,48; 50.000 dòng → 62.006.543.000 | `test_two_row_header_and_table_analysis` |
+| Sao kê đọc đúng nhưng không trả lời tiền vào/ra, số dư | Công cụ `summarize_bank`: 196.000.000 / 88.500.000, số dư 250.000.000 → 357.500.000 | `test_bank_summary_and_direct_answer` |
+| Tiêu đề gộp 2 dòng: dòng tiêu đề phụ bị tính là dữ liệu | Ghép tiêu đề 2 tầng (bộ đọc Excel 1.4.0) | `test_two_row_header_and_table_analysis` |
+| Hỏi thuế GTGT trả tổng tiền; hoá đơn bị bỏ vì bước kiểm tra không chạy | Trả thuế đầu vào/đầu ra riêng; luôn kiểm tra trước khi tổng hợp/định khoản | `test_planner_output_is_policed` |
+| Luôn tạo file Excel kể cả khi không có kết quả | Bỏ qua (SKIPPED) khi các bước phân tích không có kết quả | — |
+| Câu ngoài phạm vi / yêu cầu xoá sổ trả lời lạc đề; TNCN, mẫu 01-2/GTGT báo "hoàn thành" | Nói rõ ngoài phạm vi / chưa hỗ trợ; trạng thái "hoàn thành một phần" | `test_gender_count_answer_and_out_of_scope` |
+| Tải lại file cũ ở phiên mới bị báo "trùng" | Trùng file chỉ tính trong cùng hội thoại | — |
+| Tổ chức một người không bao giờ ghi sổ được | Được tự duyệt sau khi xác nhận, ghi audit; tự tắt khi có thành viên thứ hai | `test_single_member_org_can_self_approve_with_confirmation` |
+| `data/accounting/` không nằm trong `.gitignore` | Đã thêm | — |
+
+Còn lại: kết quả phụ thuộc LLM chọn đúng công cụ — các câu trên đều đúng trong lượt thử, nhưng chưa đo trên tập câu hỏi lớn.

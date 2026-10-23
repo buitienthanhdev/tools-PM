@@ -138,6 +138,30 @@ def find_generic_header(grid, scan_rows=30):
     return None
 
 
+def _subheader(grid, header_row):
+    """Tiêu đề 2 tầng (ô gộp "Hàng hoá" trên "Tên hàng | Số lượng | Đơn giá"): dòng ngay dưới toàn chữ, không số/ngày,
+    và lấp ô trống của dòng tiêu đề hoặc là tên cột đã biết → ghép thành một dòng tiêu đề. Trả về nhãn đã ghép hoặc None."""
+    if header_row + 1 >= len(grid):
+        return None
+    head, sub = grid[header_row], grid[header_row + 1]
+    cells = [(c, v) for c, v in enumerate(sub) if v not in (None, "")]
+    if len(cells) < 2 or not all(isinstance(v, str) for _, v in cells):
+        return None
+    if any(money.parse_amount(v).status == "OK" or parse_date(v)[0] for _, v in cells):
+        return None
+    fills_gap = any(c >= len(head) or head[c] in (None, "") for c, _ in cells)
+    known = sum(1 for _, v in cells if match_header(v))
+    if not fills_gap and known < 2:
+        return None
+    width = max(len(head), len(sub))
+    out = []
+    for c in range(width):
+        h = head[c] if c < len(head) else None
+        s = sub[c] if c < len(sub) else None
+        out.append(str(s).strip() if s not in (None, "") else (str(h).strip() if h not in (None, "") else ""))
+    return out
+
+
 def _cell_ref(sheet, r0, c0):
     return f"{col_letter(c0)}{r0 + 1}"
 
@@ -150,13 +174,22 @@ def build_docs(grid, sheet_name, file_name, currency="VND"):
         header_row = find_generic_header(grid)
         if header_row is None:
             return []
+    header = [str(v).strip() if v is not None else "" for v in grid[header_row]]
+    body_start = header_row + 1
+    merged = _subheader(grid, header_row)
+    if merged:
+        header, body_start = merged, header_row + 2
+        roles = {}
+        for c, v in enumerate(header):
+            role = match_header(v)
+            if role and role not in roles.values():
+                roles[c] = role
     context = _context_text(grid, header_row, sheet_name, file_name)
     kind, semantics = classify(roles, context)
-    header = [str(v).strip() if v is not None else "" for v in grid[header_row]]
     width = sum(1 for h in header if h)
     min_cells = max(2, (width + 1) // 2)
     body, skipped = [], []
-    for r in range(header_row + 1, len(grid)):
+    for r in range(body_start, len(grid)):
         row = grid[r]
         filled = sum(1 for v in row if v not in (None, ""))
         if not filled:

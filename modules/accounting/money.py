@@ -51,6 +51,20 @@ def fmt(value):
     return s
 
 
+def vn(value, max_dp=2):
+    """Hiển thị cho người đọc: 4.675.000 / 8,25 / -1.200 (không dùng để lưu)."""
+    if value is None or value == "":
+        return "—"
+    d = to_decimal(value)
+    d = d.quantize(Decimal(1).scaleb(-max_dp), rounding=ROUND_HALF_UP)
+    sign = "-" if d < 0 else ""
+    s = format(abs(d), "f")
+    whole, _, frac = s.partition(".")
+    frac = frac.rstrip("0")
+    whole = f"{int(whole):,}".replace(",", ".")
+    return sign + whole + ("," + frac if frac else "")
+
+
 def D(s):
     """Đọc lại giá trị từ DB."""
     return None if s is None or s == "" else Decimal(s)

@@ -433,7 +433,9 @@ export const accountingModule = {
         return `<div class="ac-msg user"><div class="who">${esc((msg.created_by || '?')[0].toUpperCase())}</div><div class="body"><div class="text">${esc(msg.content)}</div>
           <div class="meta">${when(msg.created_at)}</div></div></div>${msg.task_id ? `<div data-task="${msg.task_id}"></div>` : ''}`;
       }
-      return `<div class="ac-msg assistant"><div class="who">AI</div><div class="body"><div class="text">${esc(msg.content)}</div>
+      // Đoạn đầu = câu trả lời (đậm, màu chính); sau dòng trống = chi tiết các bước (mờ)
+      const [ans, ...rest] = String(msg.content || '').split('\n\n');
+      return `<div class="ac-msg assistant"><div class="who">AI</div><div class="body"><div class="text"><div class="ac-answer">${esc(ans)}</div>${rest.length ? `<div class="ac-detail">${esc(rest.join('\n\n'))}</div>` : ''}</div>
         <div class="meta">${when(msg.created_at)}</div></div></div>`;
     }).join('');
     for (const t of c.tasks) this.pollTask(t.id, true);
@@ -699,11 +701,13 @@ export const accountingModule = {
     body.innerHTML = approvals.map((a) => `<div class="ac-card" data-ap="${a.id}">
       <div class="row">${status(a.status)}<span class="ac-note">${esc(a.requested_by)} yêu cầu · ${when(a.requested_at)}</span></div>
       ${a.entry ? this.entryHtml(a.entry) : ''}
-      <div class="row" style="margin-top:10px">${a.can_approve ? `<button class="btn btn-ok btn-xs" data-ok>Phê duyệt & ghi sổ</button><button class="btn btn-danger btn-xs" data-no>Từ chối</button>`
+      <div class="row" style="margin-top:10px">${a.can_approve ? `${a.self_approval === 'single_member' ? '<span class="ac-note">Tổ chức chỉ có bạn — được tự duyệt sau khi xác nhận (ghi nhật ký kiểm toán). Thêm thành viên để có kiểm tra chéo.</span>' : ''}<button class="btn btn-ok btn-xs" data-ok data-self="${a.self_approval || ''}">Phê duyệt & ghi sổ</button><button class="btn btn-danger btn-xs" data-no>Từ chối</button>`
         : `<span class="ac-note">${this.can('approve') ? 'Bạn là người tạo/yêu cầu nên không được tự duyệt.' : 'Cần vai trò APPROVER để phê duyệt.'}</span>`}</div></div>`).join('');
     body.querySelectorAll('[data-ok]').forEach((b) => (b.onclick = async () => {
       if (!confirm('Ghi sổ bút toán này? Sau khi ghi sổ, chỉ sửa được bằng bút toán đảo.')) return;
-      try { await api(`/o/${s.org}/approvals/${b.closest('[data-ap]').dataset.ap}/approve`, { method: 'POST' }); toast('Đã ghi sổ', 'success'); this.counts(); this.viewApprovals(); }
+      const self = b.dataset.self === 'single_member';
+      if (self && !confirm('Tổ chức này chỉ có một thành viên nên không có người thứ hai để kiểm tra chéo. Bạn xác nhận TỰ phê duyệt bút toán của chính mình? Việc này được ghi vào nhật ký kiểm toán.')) return;
+      try { await api(`/o/${s.org}/approvals/${b.closest('[data-ap]').dataset.ap}/approve`, { method: 'POST', body: { confirm_self: self } }); toast('Đã ghi sổ', 'success'); this.counts(); this.viewApprovals(); }
       catch (e) { toast(`${e.message}${e.data?.details?.length ? ': ' + e.data.details.join('; ') : ''}`, 'error'); }
     }));
     body.querySelectorAll('[data-no]').forEach((b) => (b.onclick = async () => {
@@ -830,6 +834,8 @@ export const accountingModule = {
         <div class="row" style="margin-top:8px"><input class="ac-input" id="ac-oname" value="${esc(d.org.name)}" ${manage ? '' : 'disabled'} style="flex:1;min-width:220px" />
         <input class="ac-input" id="ac-otax" value="${esc(d.org.tax_id || '')}" placeholder="Mã số thuế" ${manage ? '' : 'disabled'} style="width:170px" />
         ${manage ? '<button class="btn btn-primary btn-xs" id="ac-osave">Lưu</button>' : ''}</div>
+        ${d.tax_id_valid === false ? '<p class="ac-note" style="color:var(--danger, #c0392b)">Mã số thuế đang lưu không hợp lệ (sai chữ số kiểm tra) — hoá đơn sẽ không được nhận là mua vào / bán ra. Hãy sửa lại.</p>' : ''}
+        ${d.tax_id_valid === null ? '<p class="ac-note">Chưa khai báo mã số thuế — hệ thống chưa phân biệt được hoá đơn mua vào / bán ra.</p>' : ''}
         <p class="ac-note">MST dùng để xác định hoá đơn mua vào / bán ra. Vai trò của bạn: ${d.roles.map(esc).join(', ')}</p></div>
       ${manage ? `<div class="ac-card"><h4>Thành viên & vai trò</h4>
         <div class="ac-table-wrap" style="margin-top:8px"><table class="ac-table"><tr><th>Email</th><th>Vai trò</th></tr>${d.members.map((u) => `<tr><td>${esc(u.email)}</td><td>${u.roles.map(esc).join(', ')}</td></tr>`).join('')}</table></div>
@@ -852,6 +858,7 @@ export const accountingModule = {
         const sel = s.el.querySelector('#ac-org');
         sel.innerHTML = `${s.orgs.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}<option value="__new">+ Tạo tổ chức mới…</option>`;
         sel.value = s.org;
+        this.viewSettings();
       } catch (e) { toast(e.message, 'error'); }
     });
     body.querySelector('#ac-madd')?.addEventListener('click', async () => {
@@ -871,7 +878,7 @@ function loadCss() {
   const l = document.createElement('link');
   l.id = 'ac-css';
   l.rel = 'stylesheet';
-  l.href = '/styles/accounting.css?v=5';
+  l.href = '/styles/accounting.css?v=6';
   document.head.appendChild(l);
 }
 

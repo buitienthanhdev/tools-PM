@@ -15,7 +15,7 @@ Ký hiệu: ✅ làm xong + có test PASS · 🟡 làm một phần · ⛔ chưa
 | 4 | Tồn kho, TSCĐ/khấu hao, thuế TNDN/TNCN | ⛔ | Chưa có công cụ |
 | 5 Report | Excel (công thức, định dạng, biểu đồ, nguồn, cảnh báo), PDF, phiên bản, xem trước | ✅ | Xác minh tự động sau khi ghi file |
 | 5 | Mẫu báo cáo pháp định (BCTC, tờ khai) | ⛔ | Chỉ báo cáo phân tích nội bộ |
-| 6 HITL | Hàng đợi kiểm duyệt, phê duyệt 2 người, bằng chứng, sửa sai bằng bút toán đảo, audit chuỗi băm | ✅ | test SoD, kỳ khoá, bút toán đảo |
+| 6 HITL | Hàng đợi kiểm duyệt, phê duyệt 2 người (tổ chức 1 người: tự duyệt có xác nhận), bằng chứng, sửa sai bằng bút toán đảo, audit chuỗi băm | ✅ | test SoD, kỳ khoá, bút toán đảo |
 | 7 Hardening | Backup/verify, giới hạn, rate limit, khôi phục worker, đo chỉ số, OpenTelemetry (JSONL cục bộ, P95 trên trang sức khoẻ) | 🟡 | Chưa: MFA, SSO, gửi trace tới collector, kiểm thử tải đồng thời nhiều người, pentest |
 | — | Scheduled workflows | ⛔ | Không hiển thị trong UI (không làm giao diện giả) |
 

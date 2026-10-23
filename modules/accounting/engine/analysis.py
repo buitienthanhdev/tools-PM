@@ -14,14 +14,15 @@ VERIFIED_SET = ("VERIFIED", "VALID_EXTRACTED", "REVIEWED")
 
 
 def invoices(org_id, file_ids=None):
+    """file_ids=None: toàn tổ chức (nội bộ); danh sách (kể cả rỗng): chỉ các file đó."""
     rows = db.all_(
         """SELECT i.*, f.original_name file_name, d.data_json doc_data FROM cur_invoices i
            JOIN files f ON f.id=i.file_id JOIN cur_documents d ON d.id=i.document_id WHERE i.org_id=?
            ORDER BY i.issue_date, i.number""", (org_id,))
-    scope = set(file_ids or [])
+    scope = None if file_ids is None else set(file_ids)
     out = []
     for r in rows:
-        if scope and r["file_id"] not in scope:
+        if scope is not None and r["file_id"] not in scope:
             continue
         data = db.loads(r.pop("doc_data"), {})
         r["vat_groups"] = (data.get("invoice") or {}).get("vat_groups") or []
@@ -118,8 +119,8 @@ def _docs(org_id, file_ids, types):
     q = ",".join("?" for _ in types)
     rows = db.all_(f"""SELECT d.*, f.original_name file_name FROM cur_documents d JOIN files f ON f.id=d.file_id
                        WHERE d.org_id=? AND d.doc_type IN ({q})""", (org_id, *types))
-    scope = set(file_ids or [])
-    return [dict(r, data=db.loads(r["data_json"], {})) for r in rows if not scope or r["file_id"] in scope]
+    scope = None if file_ids is None else set(file_ids)
+    return [dict(r, data=db.loads(r["data_json"], {})) for r in rows if scope is None or r["file_id"] in scope]
 
 
 REVENUE_HINTS = ("doanh thu", "ban hang", "revenue", "sales", "thu nhap")

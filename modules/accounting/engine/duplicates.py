@@ -27,20 +27,23 @@ def _scope_invoices(org_id, file_ids):
     rows = db.all_(
         """SELECT i.*, f.original_name file_name FROM cur_invoices i JOIN files f ON f.id=i.file_id
            WHERE i.org_id=?""", (org_id,))
-    scope = set(file_ids or [])
-    return rows, (lambda r: not scope or r["file_id"] in scope)
+    scope = None if file_ids is None else set(file_ids)
+    return rows, (lambda r: scope is None or r["file_id"] in scope)
 
 
-def detect(org_id, file_ids=None, tolerance_days=3):
+def detect(org_id, file_ids=None, tolerance_days=3, conversation_id=None):
+    """conversation_id: chỉ coi là trùng file khi cùng nội dung được tải nhiều lần trong cùng hội thoại
+    (tải lại file cũ ở phiên mới để hỏi tiếp không phải là trùng chứng từ)."""
     groups = []
-    scope = set(file_ids or [])
+    scope = None if file_ids is None else set(file_ids)  # [] = không có file nào trong phạm vi
 
     # 1. Trùng file
     for r in db.all_(
         """SELECT u.file_id, f.original_name, count(*) n, group_concat(u.original_name, ' | ') names
            FROM uploads u JOIN files f ON f.id=u.file_id
-           WHERE u.org_id=? AND u.file_id IS NOT NULL GROUP BY u.file_id HAVING n > 1""", (org_id,)):
-        if scope and r["file_id"] not in scope:
+           WHERE u.org_id=? AND u.file_id IS NOT NULL AND (? IS NULL OR u.conversation_id=?)
+           GROUP BY u.file_id HAVING n > 1""", (org_id, conversation_id, conversation_id)):
+        if scope is not None and r["file_id"] not in scope:
             continue
         groups.append({"type": "FILE_DUPLICATE", "status": "DUPLICATE", "file_ids": [r["file_id"]],
                        "reason": f"Cùng nội dung (SHA-256) được tải lên {r['n']} lần: {r['names']}"})
@@ -86,13 +89,13 @@ def detect(org_id, file_ids=None, tolerance_days=3):
     for t in txns:
         rows[(t["txn_date"], t["amount"], (t["reference"] or "").strip(), fold(t["description"]))].append(t)
     for k, items in rows.items():
-        if len(items) > 1 and k[2] and any(not scope or t["file_id"] in scope for t in items):
+        if len(items) > 1 and k[2] and any(scope is None or t["file_id"] in scope for t in items):
             groups.append({"type": "ROW_DUPLICATE", "status": "NEEDS_REVIEW", "bank_ids": [t["id"] for t in items],
                            "evidence": [{"file": t["file_name"], "row": t["row_ref"]} for t in items],
                            "reason": f"Giao dịch {k[0]} {k[1]} tham chiếu {k[2]} xuất hiện {len(items)} lần"})
     # Nghi chi trùng
     outs = [t for t in txns if money.D(t["amount"]) < 0 and t["counterparty"]
-            and (not scope or t["file_id"] in scope)]
+            and (scope is None or t["file_id"] in scope)]
     by_cp = defaultdict(list)
     for t in outs:
         by_cp[(fold(t["counterparty"]), t["amount"])].append(t)

@@ -13,8 +13,8 @@ Bất biến:
 import hashlib
 from datetime import date
 
-from .. import audit, db, money, settings
-from ..security import Forbidden
+from .. import audit, db, money
+from ..security import Forbidden, self_approval
 
 
 class JournalError(Exception):
@@ -183,10 +183,10 @@ def request_post(ctx, entry_id):
     return aid
 
 
-def approve(ctx, approval_id):
+def approve(ctx, approval_id, confirm_self=False):
     """Phê duyệt và ghi sổ trong cùng một giao dịch. Kiểm tra lại mọi bất biến tại thời điểm ghi."""
     ctx.require("approve")
-    allow_self = bool(settings.get()["allow_self_approval"])
+    self_mode = self_approval(ctx)
     with db.tx() as c:
         a = c.execute("SELECT * FROM approvals WHERE id=? AND org_id=?", (approval_id, ctx.org_id)).fetchone()
         if not a:
@@ -195,8 +195,11 @@ def approve(ctx, approval_id):
         if a["status"] != "PENDING":
             raise JournalError("bad_state", f"Yêu cầu đã ở trạng thái {a['status']}")
         e = get(ctx.org_id, a["target_id"])
-        if not allow_self and ctx.user in (a["requested_by"], e["created_by"]):
+        is_self = ctx.user in (a["requested_by"], e["created_by"])
+        if is_self and not self_mode:
             raise Forbidden("Người phê duyệt phải khác người tạo và người yêu cầu (phân tách nhiệm vụ)", "sod")
+        if is_self and self_mode == "single_member" and not confirm_self:
+            raise Forbidden("Tổ chức chỉ có một thành viên nên bạn tự phê duyệt bút toán của chính mình — cần xác nhận", "confirm_self")
         if e["status"] != "PROPOSED":
             raise JournalError("bad_state", f"Bút toán đang ở trạng thái {e['status']}")
         if payload_hash(e) != a["payload_hash"]:
@@ -222,7 +225,8 @@ def approve(ctx, approval_id):
         c.execute("UPDATE approvals SET status='EXECUTED', decided_by=?, decided_at=? WHERE id=?",
                   (ctx.user, ts, approval_id))
         audit.log(c, ctx.org_id, ctx.user, "journal.post", "journal_entry", e["id"], approval_id=approval_id,
-                  payload_hash=a["payload_hash"], requested_by=a["requested_by"])
+                  payload_hash=a["payload_hash"], requested_by=a["requested_by"],
+                  self_approved=is_self, self_approval_basis=self_mode if is_self else None)
     return e["id"]
 
 

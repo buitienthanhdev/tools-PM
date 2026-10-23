@@ -427,3 +427,62 @@ def test_docling_reads_unruled_table(tmp_path, golden):
     ingest(ctx, [golden / "sao_ke_khong_ke_o.pdf"])
     b = {r["reference"]: r["amount"] for r in db.all_("SELECT * FROM bank_transactions WHERE org_id=?", (ctx.org_id,))}
     assert b == {"FT2612500001": "12000000", "FT2613200002": "-3300000", "FT2614800003": "95000"}
+
+
+def _sales_book(path):
+    """Bảng kê bán hàng thật thường gặp: tiêu đề 2 tầng có ô gộp, dòng trống giữa bảng, dòng Tổng cộng cuối."""
+    import datetime
+
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "T5"
+    ws["A1"] = "BẢNG KÊ BÁN HÀNG THÁNG 5/2026"
+    ws.append([])
+    ws.append(["Ngày", "Số HĐ", "Khách hàng", "Hàng hoá", None, None, "Thành tiền"])
+    ws.append([None, None, None, "Tên hàng", "Số lượng", "Đơn giá", None])
+    ws.merge_cells("D3:F3")
+    rows = [(datetime.date(2026, 5, 2), "001", "Hoà Bình", "Gạo", 10, 32000), (datetime.date(2026, 5, 9), "002", "Minh Châu", "Dầu ăn", 5, 52000),
+            (datetime.date(2026, 6, 1), "003", "Hoà Bình", "Gạo", 20, 32000), (datetime.date(2026, 5, 20), "004", "Phước An", "Nước mắm", 4, 45000)]
+    for i, (d, no, kh, sp, sl, dg) in enumerate(rows):
+        ws.append([d, no, kh, sp, sl, dg, sl * dg])
+        if i == 1:
+            ws.append([])
+    ws.append(["Tổng cộng", None, None, None, None, None, sum(r[4] * r[5] for r in rows)])
+    wb.save(path)
+
+
+def test_two_row_header_and_table_analysis(env, golden, expected, tmp_path):
+    from modules.accounting.engine import tabular
+
+    ctx = new_ctx()
+    p = tmp_path / "bang_ke_ban_hang.xlsx"
+    _sales_book(p)
+    _, ids = ingest(ctx, [p, golden / expected["roster"]["file"]])
+    t = next(x for x in tabular.tables(ctx.org_id, ids) if x["sheet"] == "T5")
+    assert t["header"] == ["Ngày", "Số HĐ", "Khách hàng", "Tên hàng", "Số lượng", "Đơn giá", "Thành tiền"]
+    assert len(t["rows"]) == 4  # không tính dòng tiêu đề phụ, dòng trống, dòng Tổng cộng
+    # Tên cột theo lời người dùng → cột thật
+    r = tabular.analyze(ctx.org_id, ids, "sum", "doanh thu", "mặt hàng")["results"]
+    sales = next(x for x in r if x["sheet"] == "T5")
+    assert sales["value_column"] == "Thành tiền" and sales["group_by"] == "Tên hàng"
+    assert {g["key"]: g["sum"] for g in sales["groups"]} == {"Gạo": 960000, "Dầu ăn": 260000, "Nước mắm": 180000}
+    assert sales["groups"][0]["key"] == "Gạo"
+    may = tabular.analyze(ctx.org_id, ids, "sum", "doanh thu", None, [{"column": "tháng", "op": "eq", "value": "5"}])["results"]
+    assert next(x for x in may if x["sheet"] == "T5")["sum"] == 320000 + 260000 + 180000
+    # Danh sách sinh viên: cột "Phái" khi người dùng nói "giới tính"; lọc theo giá trị khi tên cột lạ
+    girls = tabular.analyze(ctx.org_id, ids, "count", filters=[{"column": "giới tính", "op": "eq", "value": "Nữ"}])["results"]
+    assert [x["matched"] for x in girls] == [expected["roster"]["female"]]
+    odd = tabular.analyze(ctx.org_id, ids, "count", filters=[{"column": "sex", "value": "Nam"}])["results"]
+    assert [x["matched"] for x in odd] == [expected["roster"]["male"]]
+    best = tabular.analyze(ctx.org_id, ids, "max", "điểm trung bình")
+    item = best["results"][0]["items"][0]
+    assert best["results"][0]["value_column"] == "TBCTK_10" and "SV99" in item["label"]
+    assert any("TBC TL" in n for n in best["notes"])  # có cột điểm khác → nói rõ đã chọn cột nào
+    listed = tabular.analyze(ctx.org_id, ids, "list", filters=[{"column": "phái", "value": "Nữ"}])["results"][0]
+    assert len(listed["items"]) == 40 and all(it["values"][6] == "Nữ" for it in listed["items"])
+    with pytest.raises(tabular.ColumnNotFound) as e:
+        tabular.analyze(ctx.org_id, [ids[0]], "sum", "lợi nhuận")
+    assert "Thành tiền" in str(e.value)  # hỏi lại kèm danh sách cột thật
+    assert tabular.analyze(ctx.org_id, [], "count")["results"] == []  # phiên không có file → không có dữ liệu

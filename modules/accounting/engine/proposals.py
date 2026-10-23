@@ -10,9 +10,9 @@
 - Hoá đơn chưa qua kiểm tra (CONFLICTED / NEEDS_EVIDENCE / NEEDS_REVIEW) → không đề xuất.
 """
 
-from .. import audit, db, money, settings
+from .. import audit, db, money
 from ..extract.base import fold, norm_tax_id
-from ..security import Forbidden
+from ..security import Forbidden, self_approval
 from . import journal
 
 USABLE = ("VERIFIED", "VALID_EXTRACTED", "REVIEWED")
@@ -61,7 +61,7 @@ def decide_rule(ctx, rule_id, approve, reason=""):
         r = c.execute("SELECT * FROM account_rules WHERE id=? AND org_id=?", (rule_id, ctx.org_id)).fetchone()
         if not r or r["status"] != "PROPOSED":
             raise journal.JournalError("bad_state", "Quy tắc không ở trạng thái chờ duyệt")
-        if r["proposed_by"] == ctx.user and not settings.get()["allow_self_approval"]:
+        if r["proposed_by"] == ctx.user and not self_approval(ctx):
             raise Forbidden("Quy tắc phải được người khác duyệt", "sod")
         status = "ACTIVE" if approve else "REJECTED"
         c.execute("UPDATE account_rules SET status=?, decided_by=?, decided_at=? WHERE id=?",

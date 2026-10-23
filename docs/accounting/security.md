@@ -5,6 +5,9 @@
 - Vào module cần quyền công cụ `accounting` do admin Hub cấp (không tự cấp khi `auto_approve`).
 - Trong module: vai trò theo tổ chức — ADMIN, ACCOUNTANT, REVIEWER, APPROVER, AUDITOR, VIEWER (`security.PERMS`). Quyền quyết định ở máy chủ.
 - Phân tách nhiệm vụ: người phê duyệt ghi sổ / quy tắc hạch toán phải khác người tạo và người yêu cầu (`allow_self_approval=false`).
+  Ngoại lệ: tổ chức chỉ có **một** thành viên (không có người thứ hai) được tự duyệt sau khi xác nhận rõ (`confirm_self`);
+  audit ghi `self_approved=true, self_approval_basis=single_member`. Thêm thành viên thứ hai → ngoại lệ tự tắt.
+- Phạm vi dữ liệu: công cụ chỉ đọc file của tác vụ (file trong hội thoại); hội thoại không có file không đọc dữ liệu nào.
 - Chưa có: MFA, SSO doanh nghiệp.
 
 ## Cô lập tenant

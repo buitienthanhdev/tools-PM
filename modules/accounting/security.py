@@ -143,6 +143,21 @@ def set_member(ctx, email, roles):
         audit.record(ctx.org_id, ctx.user, "member.set", "member", email, before=before, after=sorted(set(roles)))
 
 
+def member_count(org_id):
+    with db.central():
+        return db.one("SELECT count(DISTINCT user_email) n FROM org_members WHERE org_id=?", (org_id,))["n"]
+
+
+def self_approval(ctx):
+    """None = không được tự duyệt; "setting" = cấu hình cho phép; "single_member" = tổ chức chỉ có một người
+    (không có người thứ hai để phân tách nhiệm vụ) — được tự duyệt khi xác nhận rõ, có ghi audit."""
+    from . import settings
+
+    if settings.get()["allow_self_approval"]:
+        return "setting"
+    return "single_member" if member_count(ctx.org_id) == 1 else None
+
+
 def members(ctx):
     with db.central():
         rows = db.all_(

@@ -103,6 +103,12 @@ def one_or_404(sql, args):
     return r
 
 
+def _tax_ok(tax):
+    from stdnum.vn import mst as vn_mst
+
+    return vn_mst.is_valid(tax)
+
+
 # ── trạng thái & tổ chức ─────────────────────────────────────────
 @bp.route("/status")
 def status():
@@ -132,6 +138,8 @@ def create_org():
     if not name:
         return err("bad_request", "Cần tên tổ chức", 400)
     tax = re.sub(r"[^0-9-]", "", str(d.get("tax_id") or "")) or None
+    if tax and not _tax_ok(tax):
+        return err("bad_tax_id", f"Mã số thuế {tax} không hợp lệ (sai độ dài hoặc chữ số kiểm tra)", 400)
     oid = security.create_org(name, email, tax_id=tax, base_currency=str(d.get("base_currency") or "VND").upper()[:3])
     return jsonify({"org_id": oid, "orgs": security.orgs_of(email)})
 
@@ -139,7 +147,8 @@ def create_org():
 @bp.route("/o/<org_id>/settings", methods=["GET"])
 @org_route("read")
 def org_settings(ctx):
-    return jsonify({"org": db.one("SELECT * FROM orgs WHERE id=?", (ctx.org_id,)), "roles": sorted(ctx.roles),
+    org = db.one("SELECT * FROM orgs WHERE id=?", (ctx.org_id,))
+    return jsonify({"org": org, "roles": sorted(ctx.roles), "tax_id_valid": _tax_ok(org["tax_id"]) if org["tax_id"] else None,
                     "members": security.members(ctx) if ctx.can("manage") else None})
 
 
@@ -147,6 +156,10 @@ def org_settings(ctx):
 @org_route("manage")
 def org_settings_update(ctx):
     d = body()
+    if "tax_id" in d:
+        t = re.sub(r"[^0-9-]", "", str(d.get("tax_id") or ""))
+        if t and not _tax_ok(t):
+            return err("bad_tax_id", f"Mã số thuế {t} không hợp lệ (sai độ dài hoặc chữ số kiểm tra) — chưa lưu", 400)
     with db.tx() as c:
         before = dict(c.execute("SELECT name, tax_id, base_currency FROM orgs WHERE id=?", (ctx.org_id,)).fetchone())
         name = str(d.get("name") or before["name"]).strip()[:120]
@@ -518,17 +531,19 @@ def journal_reverse(ctx, entry_id):
 def approvals(ctx):
     rows = db.all_("SELECT * FROM approvals WHERE org_id=? AND status=? ORDER BY requested_at DESC LIMIT 500",
                    (ctx.org_id, request.args.get("status") or "PENDING"))
+    mode = security.self_approval(ctx)
     for a in rows:
         a["entry"] = journal.get(ctx.org_id, a["target_id"]) if a["target_type"] == "journal_entry" else None
-        a["can_approve"] = ctx.can("approve") and (settings.get()["allow_self_approval"] or (
-            ctx.user != a["requested_by"] and (not a["entry"] or ctx.user != a["entry"]["created_by"])))
+        is_self = ctx.user == a["requested_by"] or bool(a["entry"] and ctx.user == a["entry"]["created_by"])
+        a["self_approval"] = mode if is_self else None
+        a["can_approve"] = ctx.can("approve") and (not is_self or mode is not None)
     return jsonify({"approvals": rows})
 
 
 @bp.route("/o/<org_id>/approvals/<approval_id>/approve", methods=["POST"])
 @org_route("approve")
 def approval_approve(ctx, approval_id):
-    return jsonify({"posted_entry": journal.approve(ctx, approval_id)})
+    return jsonify({"posted_entry": journal.approve(ctx, approval_id, confirm_self=bool(body().get("confirm_self")))})
 
 
 @bp.route("/o/<org_id>/approvals/<approval_id>/reject", methods=["POST"])
