@@ -15,3 +15,5 @@
 | R-11 | Worker trong tiến trình web, tác vụ dài chiếm thread | Thấp | 1 worker mặc định, lease + khôi phục | Có thể tách tiến trình riêng |
 | R-12 | Tài khoản Hub tự duyệt (auto_approve) | Trung bình | `accounting` là công cụ nhạy cảm, không tự cấp | — |
 | R-13 | Defender không có/không quét | Thấp | Ghi NOT_SCANNED vào provenance; chặn exe theo chữ ký | — |
+| R-14 | docling/PaddleOCR xung đột phiên bản với các công cụ khác của Hub | Trung bình | Venv riêng `venvs/docai`, gọi qua tiến trình con có timeout và khoá; lỗi → bộ đọc chính tiếp tục | Venv riêng phải được cập nhật thủ công |
+| R-15 | docling/PaddleOCR chạy CPU chậm (hàng chục giây/trang), chiếm CPU | Thấp | Chỉ chạy khi bộ đọc chính thất bại; một tiến trình mỗi lúc; giới hạn `max_pdf_table_pages` | Có thể tắt bằng `paddle_ocr`/`docling` = off |

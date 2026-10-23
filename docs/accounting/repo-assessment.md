@@ -25,7 +25,14 @@ Ngày khảo sát: 2026-10-23. Bằng chứng: đọc mã nguồn PM Tools; GitH
 | langgenius/dify | Apache-2.0 sửa đổi | hoạt động | Không dùng: cấm vận hành đa tenant nếu không có giấy phép thương mại |
 | n8n-io/n8n | Sustainable Use License | hoạt động | Không dùng: không phải OSI; workflow cố định không phù hợp agent |
 | opendatalab/MinerU | Apache-2.0 + điều khoản thương mại theo ngưỡng | hoạt động | Ứng viên adapter tương lai cho PDF phức tạp; nặng (model riêng) |
-| docling-project/docling | MIT | hoạt động | Ứng viên adapter tương lai; hiện PyMuPDF đủ cho PDF có lớp chữ + toạ độ |
+| docling-project/docling | MIT | hoạt động | **Đã tích hợp** làm dự phòng cho bảng PDF không kẻ ô, chạy trong venv riêng `venvs/docai` qua tiến trình con |
+| PaddlePaddle/PaddleOCR | Apache-2.0 | hoạt động | **Đã tích hợp** làm OCR dự phòng khi EasyOCR không nhận diện được (venv riêng; `enable_mkldnn=False` trên CPU) |
+| jsvine/pdfplumber | MIT | hoạt động | **Đã tích hợp**: bảng dòng hàng hoá đơn PDF, sao kê PDF |
+| arthurdejong/python-stdnum | LGPL-2.1+ | hoạt động | **Đã tích hợp**: kiểm tra chữ số kiểm tra MST (`stdnum.vn.mst`); dùng như thư viện, không sửa mã |
+| savoirfairelinux/num2words | LGPL-2.1 | hoạt động | **Đã tích hợp**: đối chiếu tổng tiền bằng chữ tiếng Việt; dùng như thư viện |
+| rapidfuzz/RapidFuzz | MIT | hoạt động | **Đã tích hợp**: so khớp mờ tên đối tác khi đối soát, sửa nhãn OCR |
+| python-excel/xlrd | BSD | duy trì tối thiểu | **Đã tích hợp**: đọc .xls (chỉ giá trị đã lưu) |
+| open-telemetry/opentelemetry-python | Apache-2.0 | hoạt động | **Đã tích hợp**: span cho tác vụ/công cụ/trích xuất, xuất JSONL cục bộ |
 | paperless-ngx | GPL-3.0 | hoạt động | Ứng dụng hoàn chỉnh, GPL — không nhúng |
 | invoice-x/invoice2data | MIT | hoạt động | Ý tưởng template theo nhãn được áp dụng; không thêm dependency vì hoá đơn VN có XML chuẩn |
 | frappe/erpnext | GPL-3.0 | hoạt động | ERP đầy đủ, MariaDB — ngoài phạm vi; có thể làm adapter xuất dữ liệu sau |
@@ -33,6 +40,8 @@ Ngày khảo sát: 2026-10-23. Bằng chứng: đọc mã nguồn PM Tools; GitH
 | jmcnamara/XlsxWriter | BSD-2 | hoạt động | Không cần: chỉ ghi; openpyxl (MIT, có sẵn) vừa đọc vừa ghi |
 | exceljs/exceljs | MIT | push cuối 2025-01 | Không dùng (JavaScript, chậm duy trì) |
 | ClosedXML/ClosedXML | MIT | hoạt động | Không dùng (.NET) |
+
+docling và PaddleOCR **không** cài vào venv của Hub vì sẽ hạ huggingface-hub (2.2→1.33), numpy (2.5.4→2.3.5) và thêm opencv-contrib, làm hỏng Whisper/VoxCPM/Real-ESRGAN. Thiếu venv `venvs/docai` thì module tự bỏ qua hai bộ dự phòng này.
 
 Rủi ro license đã có từ trước: **PyMuPDF là AGPL-3.0** (Hub đang dùng cho module pháp luật). Module kế toán dùng PyMuPDF để lấy toạ độ và vẽ trang bằng chứng — ghi trong risk-register R-09.
 

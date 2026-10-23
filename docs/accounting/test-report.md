@@ -7,9 +7,10 @@ Môi trường: Windows 11 Pro, Python 3.12.10, venv của Hub, RTX 5090. Chạy
 | Lệnh | Kết quả |
 | --- | --- |
 | `ruff check .` | All checks passed |
-| `pytest tests_hub/test_accounting_engine.py tests_hub/test_accounting_extract.py tests_hub/test_accounting_api.py -q` | **67 passed, 1 skipped** (OCR GPU, bật bằng `AAAP_OCR_TEST=1`) |
+| `pytest tests_hub -k accounting -q` | **83 passed, 3 skipped** (OCR GPU bật bằng `AAAP_OCR_TEST=1`; PaddleOCR/docling bật bằng `AAAP_DOCAI_TEST=1`) |
+| `AAAP_DOCAI_TEST=1 pytest tests_hub/test_accounting_extract.py -k "paddle or docling"` | 2 passed (PaddleOCR đọc ảnh mờ; docling đọc sao kê không kẻ ô) |
 | `AAAP_OCR_TEST=1 pytest tests_hub/test_accounting_extract.py -k ocr` | 1 passed (OCR thật trên GPU) |
-| `pytest -q --ignore=tests_hub/test_image_processing.py` (toàn bộ Hub) | 92 passed, 1 skipped, **3 failed** |
+| `pytest -q --ignore=tests_hub/test_image_processing.py` (toàn bộ Hub) | 108 passed, 3 skipped, **3 failed** |
 
 3 lỗi toàn bộ Hub (`test_job_owner_isolated`, `test_image_validation`, `test_tools_health_shape`) **có từ trước** (baseline trước thay đổi:
 25 passed / 3 failed, cùng 3 test): worktree không có binary Real-ESRGAN bị gitignore. Không có hồi quy do module kế toán.
@@ -38,16 +39,18 @@ Môi trường: Windows 11 Pro, Python 3.12.10, venv của Hub, RTX 5090. Chạy
 
 | Chỉ số | Giá trị |
 | --- | --- |
-| Document parsing success rate | 0,972 (35/36; thất bại có chủ đích: PDF có mật khẩu) |
-| File độc hại/không hỗ trợ bị từ chối đúng mã | 3/3 (+ zip bomb, path traversal, XXE, ZIP lồng sâu xử lý đúng) |
-| Độ đúng trạng thái hoá đơn / tổng tiền | 1,0 / 1,0 (16 hoá đơn) |
+| Document parsing success rate | 0,9545 (42/44; thất bại có chủ đích: PDF có mật khẩu, `corrupt_excel.xls`). Trước đây 0,972 (35/36): .xls nay là định dạng được hỗ trợ nên file .xls hỏng được tính là đọc thất bại thay vì bị từ chối |
+| File độc hại/không hỗ trợ bị từ chối đúng mã | 3/3 (exe giả PDF, .doc nhị phân, Office mã hoá; + zip bomb, path traversal, XXE, ZIP lồng sâu xử lý đúng) |
+| Độ đúng trạng thái hoá đơn / tổng tiền | 1,0 / 1,0 (19 hoá đơn, gồm MST sai chữ số kiểm tra → NEEDS_REVIEW, số tiền bằng chữ lệch → CONFLICTED, dòng hàng PDF sai phép nhân → NEEDS_REVIEW) |
 | Trường PDF so với XML cùng hoá đơn | 9/9 |
 | Trùng lặp: recall / dương tính giả | 1,0 / 0,0 |
-| Đối soát: precision / recall | 1,0 / 1,0 (7 cặp đúng); 36% nhóm chuyển người kiểm duyệt |
+| Đối soát: precision / recall | 1,0 / 1,0; 36% nhóm chuyển người kiểm duyệt (tên đối tác so khớp mờ bằng RapidFuzz, ngưỡng chặt cho tên ngắn) |
 | Task completion / artifact hợp lệ | 1,0 / 1,0 (15 tác vụ) |
-| Độ trễ thực thi P50 / P95 | 0,061 s / 0,079 s (không gồm upload và LLM; trích xuất đã cache) |
+| Độ trễ thực thi P50 / P95 | 0,073 s / 0,09 s (không gồm upload và LLM; trích xuất đã cache) |
 | LLM lập kế hoạch (staging, qwen3.8:27b) | 2–3 s khi model đã nạp; 19 s lần đầu |
-| OCR thật | Ảnh scan rõ: 8/8 trường đúng (vẫn NEEDS_REVIEW). Ảnh mờ Gaussian σ=3,5: không nhận diện, không bịa |
+| OCR thật | Ảnh scan rõ (EasyOCR): 8/8 trường đúng (vẫn NEEDS_REVIEW). Ảnh mờ Gaussian σ=3,5: EasyOCR không nhận diện; PaddleOCR dự phòng nhận diện được hoá đơn (vẫn NEEDS_REVIEW, kiểm tra MST/chữ báo cần xem lại thay vì xung đột) |
+| docling | Sao kê PDF không kẻ ô: đọc được bảng giao dịch (pdfplumber không tìm thấy bảng) |
+| Telemetry | Span task/plan/tool/extract/docai ghi JSONL; test xác nhận không có nội dung chứng từ trong thuộc tính |
 
 **Giới hạn của các con số:** golden dataset do nhóm phát triển tự tạo từ dữ liệu hư cấu, nên 100% chỉ chứng minh hệ thống đúng
 trên các tình huống đã thiết kế, **không** phải độ chính xác trên chứng từ thật. Cần đo lại với bộ chứng từ thật đã ẩn danh.
