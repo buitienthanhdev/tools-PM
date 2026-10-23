@@ -1,0 +1,6 @@
+# Venv RIÊNG cho xử lý tài liệu nặng (D:\tools PM\venvs\docai) — KHÔNG cài vào .venv của Hub:
+# docling hạ huggingface-hub (2.2 → 1.33), PaddleOCR hạ numpy (2.5 → 2.3) và cài opencv-contrib chồng opencv-headless,
+# có thể làm hỏng Whisper/VoxCPM/Real-ESRGAN. Module kế toán gọi các thư viện này qua tiến trình riêng.
+docling
+paddleocr
+paddlepaddle

@@ -33,3 +33,10 @@ requests>=2.32
 # Accounting AI (modules/accounting)
 openpyxl>=3.1
 lxml>=5.0
+pdfplumber>=0.11
+python-stdnum>=2.0
+num2words>=0.5.14
+rapidfuzz>=3.0
+xlrd>=2.0
+opentelemetry-api>=1.30
+opentelemetry-sdk>=1.30
