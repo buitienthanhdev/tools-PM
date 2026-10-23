@@ -17,6 +17,8 @@ import itertools
 import re
 from datetime import date
 
+from rapidfuzz import fuzz
+
 from .. import money
 from ..extract.base import fold
 
@@ -37,6 +39,36 @@ def _sim(a, b):
     if not ta or not tb:
         return 0.0
     return len(ta & tb) / len(ta | tb)
+
+
+# Tên doanh nghiệp: mở rộng viết tắt, bỏ phần loại hình (công ty, TNHH, cổ phần…) rồi so khớp mờ
+ABBR = {"cty": "cong ty", "ct": "cong ty", "vpp": "van phong pham", "tm": "thuong mai", "dv": "dich vu", "xd": "xay dung",
+        "sx": "san xuat", "xnk": "xuat nhap khau", "cn": "chi nhanh", "tmdv": "thuong mai dich vu", "vt": "van tai"}
+LEGAL = {"cong", "ty", "tnhh", "co", "phan", "cp", "mtv", "jsc", "ltd", "company", "corp", "doanh", "nghiep", "tu", "nhan",
+         "dntn", "hop", "tac", "xa", "htx", "chi", "nhanh"}
+
+
+def party_name(s):
+    words = []
+    for t in fold(s).split():
+        words += ABBR.get(t, t).split()
+    return " ".join(w for w in words if w not in LEGAL)
+
+
+def party_sim(a, b):
+    """
+    Độ giống tên đối tượng 0..1: tỉ lệ từ đặc trưng của tên ngắn hơn (thường là tên rút gọn trên sao kê) có mặt
+    trong tên dài hơn. Từ ngắn (<5 ký tự, VD "an"/"anh") phải trùng chính xác; từ dài cho phép lỗi gõ nhỏ
+    (RapidFuzz ≥ 90). Tên ngắn dưới 2 từ đặc trưng chỉ chấp nhận trùng nguyên văn.
+    """
+    ta, tb = party_name(a).split(), party_name(b).split()
+    if not ta or not tb:
+        return 0.0
+    short, long_ = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    if len(short) < 2:
+        return 1.0 if ta == tb else 0.0
+    hit = sum(1 for t in short if t in long_ or (len(t) >= 5 and any(len(u) >= 5 and fuzz.ratio(t, u) >= 90 for u in long_)))
+    return hit / len(short)
 
 
 def _days(a, b):
@@ -62,13 +94,26 @@ def _ref_hit(bank, book):
     return len(kr) >= 6 and kr in norm_ref(bank.get("description"))
 
 
+PARTY_MIN = 0.85
+
+
+def _party(bank, book):
+    return max(_sim(bank.get("counterparty") or bank.get("description"), book.get("counterparty")),
+               party_sim(bank.get("counterparty"), book.get("counterparty")))
+
+
+def _evidence(bank, book):
+    """Số bằng chứng độc lập ngoài số tiền + ngày: tham chiếu (2), đối tượng (1), diễn giải (1)."""
+    return (2 if _ref_hit(bank, book) else 0) + (1 if _party(bank, book) >= PARTY_MIN or _sim(
+        bank.get("counterparty") or bank.get("description"), book.get("counterparty")) >= 0.5 else 0) + (
+        1 if _sim(bank.get("description"), book.get("description")) >= 0.4 else 0)
+
+
 def _strength(bank, book):
     """0: chỉ số tiền + ngày; 1: đối tượng/diễn giải khớp; 2: tham chiếu khớp."""
     if _ref_hit(bank, book):
         return 2
-    cs = _sim(bank.get("counterparty") or bank.get("description"), book.get("counterparty"))
-    ds = _sim(bank.get("description"), book.get("description"))
-    return 1 if (cs >= 0.5 or ds >= 0.4) else 0
+    return 1 if _evidence(bank, book) else 0
 
 
 def _reasons(bank, book):
@@ -78,8 +123,8 @@ def _reasons(bank, book):
         out.append(f"lệch {dd} ngày")
     if _ref_hit(bank, book):
         out.append(f"tham chiếu khớp: {book.get('reference') or bank.get('reference')}")
-    cs = _sim(bank.get("counterparty") or bank.get("description"), book.get("counterparty"))
-    if cs >= 0.5:
+    cs = _party(bank, book)
+    if cs >= PARTY_MIN or _sim(bank.get("counterparty") or bank.get("description"), book.get("counterparty")) >= 0.5:
         out.append(f"đối tượng khớp ({cs:.0%})")
     ds = _sim(bank.get("description"), book.get("description"))
     if ds >= 0.4:
@@ -125,8 +170,12 @@ def reconcile(bank_rows, book_rows, tolerance_days=3):
             if best != level:
                 continue
             top = [k for k in cands if _strength(b, k) == level]
+            if level == 1 and len(top) > 1:  # nhiều bút toán: chỉ giữ ứng viên có nhiều bằng chứng nhất (nếu duy nhất)
+                best_ev = max(_evidence(b, k) for k in top)
+                top = [k for k in top if _evidence(b, k) == best_ev]
+            ev = max(_evidence(b, k) for k in top)
             rivals = [x for x in bank if x["id"] not in used_b and x["id"] != b["id"]
-                      and any(same(x, k) and _strength(x, k) >= level for k in top)]
+                      and any(same(x, k) and _strength(x, k) >= level and _evidence(x, k) >= ev for k in top)]
             if len(top) == 1 and not rivals:
                 matches.append(_m(status, [b], top, score, _reasons(b, top[0])))
                 used_b.add(b["id"])

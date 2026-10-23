@@ -357,3 +357,13 @@ def test_backup_and_restore_verification(env, golden):
     victim.write_bytes(b"tampered")
     bad = backup.verify(out)
     assert not bad["ok"] and any("không khớp" in p or "hỏng" in p for p in bad["problems"])
+
+
+def test_party_name_matching():
+    from modules.accounting.engine.reconcile import PARTY_MIN, party_sim
+
+    same = [("CTY VPP MINH AN", "Công ty TNHH Văn Phòng Phẩm Minh An"), ("CTY TNHH TM BINH MINH", "Công ty TNHH Thương Mại Bình Minh"),
+            ("CTY CP XAY DUNG DONG A", "Công ty CP Xây Dựng Đông Á")]
+    different = [("CTY VPP MINH AN", "Công ty TNHH Văn Phòng Phẩm Minh Anh"), ("CONG TY ABC", "Công ty XYZ"), ("AN", "Minh An")]
+    assert all(party_sim(a, b) >= PARTY_MIN for a, b in same)
+    assert all(party_sim(a, b) < PARTY_MIN for a, b in different)
