@@ -304,3 +304,19 @@
 .ac-table td { max-width: 380px; }
 
 .ac-badge[hidden] { display: none; }
+
+/* ── Trang Tổng quan theo khuôn chung của Hub (mp-hero + mp-panel) ── */
+.ac-landing { --ac-ok: var(--success); --ac-warn: var(--amber); --ac-bad: var(--rose); --ac-line: var(--border-color); --ac-soft: var(--bg-elevated); }
+.ac-landing .mp-actions .ac-select { max-width: 280px; }
+.ac-landing .ac-kpis { gap: 14px; }
+.ac-landing .ac-inventory { margin: 16px 2px 0; }
+.ac-goto { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.ac-goto-btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px; border-radius: 999px; border: 1px solid var(--border-color);
+  background: none; color: var(--text-muted); font: inherit; font-size: 13px; cursor: pointer; }
+.ac-goto-btn:hover { border-color: var(--border-accent); color: var(--text-main); }
+.ac-goto-btn svg { color: var(--primary); }
+.ac-drop.fixed { position: fixed; inset: 84px 16px 16px; }
+@media (max-width: 860px) {
+  .ac-landing .mp-actions { width: 100%; }
+  .ac-landing .mp-actions .ac-select { max-width: none; flex: 1; }
+}
