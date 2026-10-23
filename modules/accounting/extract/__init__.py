@@ -13,6 +13,7 @@ PARSERS = {
     "pdf": ("pdf", pdf.VERSION),
     "xlsx": ("excel_openpyxl", office.VERSION),
     "xlsm": ("excel_openpyxl", office.VERSION),
+    "xls": ("excel_xlrd", office.VERSION),
     "csv": ("delimited", office.VERSION),
     "tsv": ("delimited", office.VERSION),
     "docx": ("docx", office.VERSION),
@@ -43,6 +44,8 @@ def run(file_row):
             return r
         if kind == "pdf":
             return pdf.extract(data, name)
+        if kind == "xls":
+            return office.xls(data, name)
         if kind in ("csv", "tsv"):
             return office.delimited(data, name, kind)
         if kind == "docx":

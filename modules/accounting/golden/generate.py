@@ -174,6 +174,32 @@ def xlsx(rows_by_sheet, cached=None, macro=False):
     return data
 
 
+def _dt(y, m, d):
+    import datetime
+
+    return datetime.datetime(y, m, d)
+
+
+def xls_legacy(sheet, rows):
+    """File Excel 97-2003 thật (xlwt — chỉ dùng để sinh dữ liệu kiểm thử)."""
+    import xlwt
+
+    wb = xlwt.Workbook(encoding="utf-8")
+    ws = wb.add_sheet(sheet)
+    datefmt = xlwt.easyxf(num_format_str="DD/MM/YYYY")
+    for r, row in enumerate(rows):
+        for c, v in enumerate(row):
+            if v is None:
+                continue
+            if hasattr(v, "year"):
+                ws.write(r, c, v, datefmt)
+            else:
+                ws.write(r, c, v)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def _patch_xlsx(data, sheetnames, cached, macro):
     zin = zipfile.ZipFile(io.BytesIO(data))
     out = io.BytesIO()
@@ -397,7 +423,13 @@ def build(outdir):
             z.writestr(f"hoa_don/{n}", files[n])
     files["hoa_don_thang3.zip"] = batch.getvalue()
     files["empty.txt"] = b""
-    files["old_excel.xls"] = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + "Workbook".encode("utf-16-le") + b"\x00" * 512
+    files["corrupt_excel.xls"] = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + "Workbook".encode("utf-16-le") + b"\x00" * 512
+    files["old_word.doc"] = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + "WordDocument".encode("utf-16-le") + b"\x00" * 512
+    files["so_quy_T4_2026.xls"] = xls_legacy("T4", [["SỔ QUỸ TIỀN MẶT"], ["Tháng 04/2026"], [],
+                                                    ["Ngày", "Số phiếu", "Diễn giải", "Thu", "Chi"],
+                                                    [_dt(2026, 4, 2), "PT401", "Thu bán hàng", 35000000, None],
+                                                    [_dt(2026, 4, 15), "PC402", "Chi lương", None, 19000000],
+                                                    [_dt(2026, 4, 20), "PC403", "Chi thuê VP", None, 6000000]])
 
     for name, data in files.items():
         (out / name).write_bytes(data)
@@ -420,7 +452,7 @@ EXPECTED = {
     "invoice_totals": {"inv_purchase_101.xml": "4675000", "inv_sale_011.xml": "27500000", "inv_sale_011.pdf": "27500000",
                        "inv_purchase_202_vat8.xml": "21600000", "inv_usd_rate.xml": "330"},
     "rejected": {"fake_invoice.pdf": "unsupported_executable", "empty.txt": "unsupported_empty",
-                 "old_excel.xls": "unsupported_xls"},
+                 "old_word.doc": "unsupported_doc"},
     "duplicates": {
         "INVOICE_DUPLICATE": [["inv_sale_011.xml", "inv_sale_011_copy.xml", "inv_sale_011.pdf"]],
         "INVOICE_SUSPECTED": [["inv_purchase_101.xml", "inv_purchase_105_suspect.xml"]],

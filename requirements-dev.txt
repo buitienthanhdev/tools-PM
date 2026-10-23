@@ -1,0 +1,3 @@
+pytest
+ruff
+xlwt>=1.3  # chỉ để sinh file .xls trong golden dataset

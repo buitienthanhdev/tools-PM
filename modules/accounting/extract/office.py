@@ -69,6 +69,55 @@ def excel(path, file_name):
     return res
 
 
+def xls(data, file_name):
+    """Excel 97-2003 (.xls) qua xlrd: chỉ đọc giá trị đã lưu; không phân tích được công thức/macro."""
+    import xlrd
+
+    max_rows = int(settings.get()["max_sheet_rows"])
+    try:
+        book = xlrd.open_workbook(file_contents=data, on_demand=True)
+    except Exception as e:
+        raise ExtractError("bad_xls", f"Không đọc được file .xls: {type(e).__name__}") from e
+    res = Result("excel_xlrd", VERSION)
+    texts, sheets = [], []
+    for sh in book.sheets():
+        grid = []
+        for r in range(min(sh.nrows, max_rows)):
+            row = []
+            for c in range(sh.ncols):
+                cell = sh.cell(r, c)
+                if cell.ctype == xlrd.XL_CELL_DATE:
+                    try:
+                        row.append(xlrd.xldate.xldate_as_datetime(cell.value, book.datemode))
+                    except Exception:
+                        row.append(None)
+                elif cell.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK, xlrd.XL_CELL_ERROR):
+                    row.append(None)
+                elif cell.ctype == xlrd.XL_CELL_BOOLEAN:
+                    row.append(bool(cell.value))
+                elif cell.ctype == xlrd.XL_CELL_NUMBER and float(cell.value).is_integer():
+                    row.append(int(cell.value))
+                else:
+                    row.append(cell.value)
+            grid.append(row)
+        if sh.nrows > max_rows:
+            res.status = "PARTIAL"
+        grid = _trim(grid)
+        docs = tables.build_docs(grid, sh.name, file_name)
+        for d in docs:
+            d.warnings.append("File .xls: chỉ đọc giá trị đã lưu, không kiểm tra được công thức")
+        res.docs.extend(docs)
+        sheets.append({"name": sh.name, "rows": len(grid), "tables": len(docs)})
+        texts.append("\n".join(" | ".join(str(v) for v in r if v not in (None, "")) for r in grid[:2000]))
+    book.release_resources()
+    res.text = "\n".join(texts)
+    res.stats = {"sheets": sheets}
+    if not res.docs:
+        res.docs.append(Doc(doc_type="text", title=file_name, data={"sheets": sheets},
+                            warnings=["Không nhận diện được bảng dữ liệu có tiêu đề"]))
+    return res
+
+
 def delimited(data, file_name, kind):
     text, enc = decode_text(data)
     if text is None:

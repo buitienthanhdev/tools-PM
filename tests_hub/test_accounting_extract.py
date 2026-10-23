@@ -347,3 +347,20 @@ def test_vietnamese_words_parser_property():
                     ("Bốn mươi tư ngàn đồng chẵn", 44000), ("Bẩy mươi lăm nghìn", 75000), ("Một trăm lẻ năm", 105)]:
         assert words_to_int(text) == n
     assert words_to_int("hai ba triệu") is None and words_to_int("không rõ") is None
+
+
+def test_legacy_xls_read(env, golden):
+    from modules.accounting import db
+    from modules.accounting.engine import analysis
+
+    ctx = new_ctx()
+    r, ids = ingest(ctx, [golden / "so_quy_T4_2026.xls", golden / "corrupt_excel.xls"])
+    assert [x["kind"] for x in r] == ["xls", "xls"]
+    ex = {f["original_name"]: e for f, e in ((db.one("SELECT * FROM files WHERE id=?", (i,)), db.one(
+        "SELECT * FROM extractions WHERE file_id=? ORDER BY created_at DESC LIMIT 1", (i,))) for i in ids)}
+    assert ex["so_quy_T4_2026.xls"]["status"] == "OK" and ex["so_quy_T4_2026.xls"]["parser"] == "excel_xlrd"
+    assert ex["corrupt_excel.xls"]["status"] == "FAILED" and "bad_xls" in ex["corrupt_excel.xls"]["error_json"]
+    e = {x["doc_no"]: x for x in db.all_("SELECT * FROM imported_entries WHERE org_id=?", (ctx.org_id,))}
+    assert e["PT401"]["amount"] == "35000000" and e["PC402"]["amount"] == "-19000000" and e["PT401"]["entry_date"] == "2026-04-02"
+    april = next(m for m in analysis.monthly_summary(ctx.org_id, ids)["months"] if m["month"] == "2026-04")
+    assert april["cash_in"] == 35000000 and april["cash_out"] == 25000000

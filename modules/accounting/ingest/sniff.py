@@ -12,6 +12,7 @@ SUPPORTED = {
     "pdf": "application/pdf",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12",
+    "xls": "application/vnd.ms-excel",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "csv": "text/csv",
     "tsv": "text/tab-separated-values",
@@ -27,7 +28,6 @@ SUPPORTED = {
 REJECTED = {
     "executable": "File thực thi (chương trình) không được phép tải lên",
     "encrypted_office": "File Office được mã hoá bằng mật khẩu — hãy gỡ mật khẩu rồi tải lại",
-    "xls": "Định dạng Excel 97-2003 (.xls) chưa được hỗ trợ — hãy lưu lại thành .xlsx",
     "doc": "Định dạng Word 97-2003 (.doc) chưa được hỗ trợ — hãy lưu lại thành .docx",
     "unknown": "Không nhận diện được định dạng file",
     "empty": "File rỗng",
@@ -89,7 +89,7 @@ def sniff(path, original_name=""):
         if "EncryptionInfo".encode("utf-16-le") in head or b"EncryptedPackage" in head:
             return "encrypted_office", "", info
         if "Workbook".encode("utf-16-le") in head or "Book".encode("utf-16-le") in head:
-            return "xls", "", info
+            return "xls", SUPPORTED["xls"], info
         if "WordDocument".encode("utf-16-le") in head:
             return "doc", "", info
         return "unknown", "", info
