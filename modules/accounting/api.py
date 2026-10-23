@@ -215,12 +215,12 @@ def list_files(ctx):
 @org_route("read")
 def file_detail(ctx, file_id):
     f = one_or_404("SELECT * FROM files WHERE id=? AND org_id=?", (file_id, ctx.org_id))
-    docs = db.all_("SELECT id, doc_type, title, status, data_json FROM documents WHERE file_id=? AND org_id=?", (file_id, ctx.org_id))
+    docs = db.all_("SELECT id, doc_type, title, status, data_json FROM cur_documents WHERE file_id=? AND org_id=?", (file_id, ctx.org_id))
     for d in docs:
         data = db.loads(d.pop("data_json"), {})
         d["warnings"] = data.get("warnings") or []
         d["table"] = {k: data.get(k) for k in ("sheet", "header_row", "header", "roles", "semantics", "row_count", "rows_with_issues")} if "header" in data else None
-    invs = db.all_("SELECT id, series, number, issue_date, seller_name, total, currency, status FROM invoices WHERE file_id=? AND org_id=?", (file_id, ctx.org_id))
+    invs = db.all_("SELECT id, series, number, issue_date, seller_name, total, currency, status FROM cur_invoices WHERE file_id=? AND org_id=?", (file_id, ctx.org_id))
     return jsonify({"file": _file_row(f), "documents": docs, "invoices": invs})
 
 
@@ -258,7 +258,7 @@ def file_preview(ctx, file_id):
     f = one_or_404("SELECT * FROM files WHERE id=? AND org_id=?", (file_id, ctx.org_id))
     out = {"kind": f["kind"], "name": f["original_name"]}
     if f["kind"] in ("xlsx", "xlsm", "csv", "tsv", "json"):
-        docs = db.all_("SELECT data_json FROM documents WHERE file_id=? AND org_id=?", (file_id, ctx.org_id))
+        docs = db.all_("SELECT data_json FROM cur_documents WHERE file_id=? AND org_id=?", (file_id, ctx.org_id))
         out["tables"] = []
         for d in docs:
             data = db.loads(d["data_json"], {})
@@ -267,7 +267,7 @@ def file_preview(ctx, file_id):
                                       "rows": (data.get("rows") or [])[:300], "row_numbers": (data.get("row_numbers") or [])[:300],
                                       "roles": data.get("roles"), "kind": data.get("table_kind")})
     elif f["kind"] == "pdf":
-        ex = db.one("SELECT stats_json FROM extractions WHERE file_id=? ORDER BY created_at DESC LIMIT 1", (file_id,))
+        ex = db.one("SELECT stats_json FROM extractions WHERE file_id=? AND status IN ('OK','PARTIAL') ORDER BY created_at DESC LIMIT 1", (file_id,))
         out["pages"] = (db.loads(ex["stats_json"], {}) or {}).get("pages") if ex else None
     else:
         ex = db.one("SELECT text_content FROM extractions WHERE file_id=? ORDER BY created_at DESC LIMIT 1", (file_id,))

@@ -198,6 +198,9 @@ def rule_plan(command, manifest, artifacts):
         steps.append({"tool": "analyze_workbook", "goal": "Kiểm tra công thức Excel", "params": {}})
     if (manifest["tables"] or manifest["ledger_entries"]) and _has(f, "thang", "so sanh", "dashboard", "xu huong", "thu chi", "theo ky"):
         steps.append({"tool": "monthly_summary", "goal": "Tổng hợp và so sánh theo tháng", "params": {}})
+    count_q = _has(f + " ", "bao nhieu", "dem ", "so luong", "thong ke", "co may", "tong so", "phan bo", "ty le", "ti le", "danh sach co")
+    if (manifest["tables"] or manifest["ledger_entries"] or manifest["bank_txns"]) and count_q and not (inv and _has(f, "hoa don")):
+        steps.append({"tool": "profile_tables", "goal": "Đếm và thống kê dữ liệu trong bảng", "params": {}})
     if _has(f, "gop", "hop nhat", "consolidat", "ghep file"):
         steps.append({"tool": "consolidate_tables", "goal": "Gộp các bảng cùng cấu trúc", "params": {}})
     if inv and _has(f, "dinh khoan", "hach toan", "but toan", "ghi so"):
@@ -213,8 +216,9 @@ def rule_plan(command, manifest, artifacts):
         steps.append({"tool": "query_accounting_database", "goal": "Bảng cân đối phát sinh", "params": {"query": "trial_balance"}})
     if not inv and not bank and not manifest["tables"] and not manifest["ledger_entries"] and manifest["workbooks"]:
         steps.append({"tool": "analyze_workbook", "goal": "Kiểm tra workbook", "params": {}})
-    if not inv and not bank and (manifest["tables"] or manifest["ledger_entries"]) and not any(s["tool"] in ("monthly_summary", "consolidate_tables") for s in steps):
-        steps.append({"tool": "consolidate_tables", "goal": "Tổng hợp dữ liệu bảng", "params": {}})
+    if not inv and not bank and (manifest["tables"] or manifest["ledger_entries"]) and not any(
+            s["tool"] in ("monthly_summary", "consolidate_tables", "profile_tables") for s in steps):
+        steps.append({"tool": "profile_tables", "goal": "Thống kê dữ liệu trong bảng", "params": {}})
     if not steps and not manifest["files"]:
         questions.append("Chưa có chứng từ nào — hãy kéo thả file cần xử lý.")
     return steps, questions, unsupported

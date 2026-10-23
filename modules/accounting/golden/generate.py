@@ -335,6 +335,25 @@ def build(outdir):
         "Ngày,Diễn giải,Số tiền,Loại tiền\n10/03/2026,License,\"1.234\",USD\n11/03/2026,Support,\"300.50\",USD\n"
     ).encode("utf-8")
 
+    # ── Danh sách bất kỳ (không phải bảng kế toán): tiêu đề dòng 9, chữ ký cuối trang ──
+    import random as _r
+
+    rnd = _r.Random(2026)
+    ho = ["Nguyễn", "Trần", "Lê", "Phạm", "Hoàng", "Vũ", "Đặng", "Bùi"]
+    dem = ["Văn", "Thị", "Minh", "Ngọc", "Hữu", "Thu", "Đức", "Thanh"]
+    ten = ["An", "Bình", "Châu", "Dũng", "Giang", "Hà", "Khánh", "Linh", "Mai", "Nam", "Phúc", "Quân", "Trang", "Vy"]
+    xl = ["Giỏi", "Khá", "Khá", "Trung bình", "Xuất sắc"]
+    roster = [[], [], [], ["TRƯỜNG ĐẠI HỌC MẪU THỬ (HƯ CẤU)"], ["DANH SÁCH SINH VIÊN ĐỦ ĐIỀU KIỆN TỐT NGHIỆP"],
+              ["Khoá: K99", None, None, "Đợt: 1/2026"], ["Ngành: Kế toán", None, None, "Hệ: Chính quy"], [],
+              ["STT", "Mã SV", "Họ đệm", "Tên", "Ngày sinh", "Nơi sinh", "Phái", "Số CCCD", "Lớp học", "STC TL", "TBCTK_10", "TBC TL", "Xếp loại TN", "Ghi chú"]]
+    for i in range(1, 121):
+        roster.append([i, f"SV99{i:04d}", f"{rnd.choice(ho)} {rnd.choice(dem)}", rnd.choice(ten), f"{rnd.randint(1, 28):02d}/{rnd.randint(1, 12):02d}/2004",
+                       rnd.choice(["Hà Nội", "Hải Phòng", "Nam Định"]), "Nam" if i % 3 else "Nữ", f"000{rnd.randint(10**8, 10**9 - 1)}",
+                       f"K99KT0{1 + i % 3}", 130, round(rnd.uniform(6, 9.5), 2), round(rnd.uniform(2.4, 3.8), 2), xl[i % 5], None])
+    roster += [[], [None, None, None, None, None, None, None, None, None, "Hà Nội, ngày 20 tháng 10 năm 2026"],
+               [None, "Người lập biểu", None, None, None, None, None, None, None, "Trưởng phòng Đào tạo"], [], [None, "(đã ký)", None, None, None, None, None, None, None, "(đã ký)"]]
+    files["danh_sach_sinh_vien_hu_cau.xlsx"] = xlsx({"Mẫu xác nhận": roster})
+
     # ── File độc hại / bất thường ────────────────────────────────
     zb = io.BytesIO()
     with zipfile.ZipFile(zb, "w", zipfile.ZIP_DEFLATED) as z:
@@ -403,6 +422,7 @@ EXPECTED = {
     "monthly_cash": {"2026-01": {"in": "30000000", "out": "24000000"}, "2026-02": {"in": "26000000", "out": "24000000"},
                      "2026-03": {"in": "41000000", "out": "32500000"}},
     "monthly_revenue_csv": {"2026-01": "45000000", "2026-02": "38000000", "2026-03": "33000000"},
+    "roster": {"file": "danh_sach_sinh_vien_hu_cau.xlsx", "rows": 120, "female": 40, "male": 80, "skipped_footer_rows": 3},
     "workbook_findings": ["sum_range_gap", "hardcoded_total", "error_value", "broken_reference", "stale_or_wrong_value"],
 }
 

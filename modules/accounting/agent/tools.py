@@ -330,13 +330,13 @@ def reconcile_bank(run, p):
     scope = run.file_ids
     q = ",".join("?" for _ in scope) or "''"
     bank = db.all_(f"""SELECT b.id, b.txn_date date, b.amount, b.reference, b.description, b.counterparty, b.row_ref, b.file_id,
-                       f.original_name file FROM bank_transactions b JOIN files f ON f.id=b.file_id
+                       f.original_name file FROM cur_bank_transactions b JOIN files f ON f.id=b.file_id
                        WHERE b.org_id=? AND b.file_id IN ({q})""", (org, *scope))
     if not bank:
         raise NeedsInput("Không có sao kê ngân hàng trong các file đã tải lên — hãy thêm file sao kê (Excel/CSV).")
     against = p.get("against", "auto")
     book = db.all_(f"""SELECT e.id, e.entry_date date, e.amount, e.doc_no reference, e.description, e.counterparty, e.row_ref,
-                       e.file_id, f.original_name file FROM imported_entries e JOIN files f ON f.id=e.file_id
+                       e.file_id, f.original_name file FROM cur_imported_entries e JOIN files f ON f.id=e.file_id
                        WHERE e.org_id=? AND e.file_id IN ({q})""", (org, *scope))
     mode = "ledger"
     if against == "invoices" or (against == "auto" and not book):
@@ -497,6 +497,58 @@ def consolidate_tables(run, p):
             "data": {"groups": len(groups)}, "sections": sections}
 
 
+@tool(name="profile_tables", description="Đếm và thống kê bảng dữ liệu bất kỳ (danh sách nhân sự/sinh viên, bảng kê…): số dòng dữ liệu, số giá trị khác nhau, min/max/trung bình cột số, phân bố theo cột ít giá trị; lọc theo cột chứa giá trị. Dùng cho câu hỏi 'bao nhiêu', 'đếm', 'thống kê', 'phân bố', 'có mấy'.",
+      task_class=READ_ONLY, params=obj({"filter_column": {"type": ["string", "null"], "maxLength": 80},
+                                        "filter_value": {"type": ["string", "null"], "maxLength": 120},
+                                        "group_by": {"type": ["string", "null"], "maxLength": 80}}))
+def profile_tables(run, p):
+    if bool(p.get("filter_column")) != bool(p.get("filter_value")):
+        raise ToolInputError("Lọc cần cả tên cột và giá trị")
+    tabs = analysis.profile(run.ctx.org_id, run.file_ids, p.get("filter_column"), p.get("filter_value"), p.get("group_by"))
+    if not tabs:
+        raise NeedsInput("Không tìm thấy bảng có dòng tiêu đề trong các file đã tải lên" +
+                         (f" (hoặc không có cột '{p['filter_column']}')" if p.get("filter_column") else "") + ".")
+    overview, colrows, dist, answers = [], [], [], []
+    for t in tabs:
+        # Ưu tiên mã định danh thật (Mã SV, Mã NV…) hơn số thứ tự — STT không chứng minh các dòng là người/vật khác nhau
+        ids_ = [c for c in t["columns"] if c["id_like"]]
+        idc = next((c for c in ids_ if fold(c["column"]) != "stt"), ids_[0] if ids_ else None)
+        where = f"'{t['sheet']}'" if t["sheet"] not in (None, "CSV", "TSV") else f"'{t['file']}'"
+        ans = f"{where}: {t['rows']} dòng dữ liệu" + (f" ({t['filter']})" if t["filter"] else "")
+        if idc:
+            ans += f", cột '{idc['column']}' có {idc['distinct']} giá trị khác nhau"
+        if t["skipped_rows"]:
+            ans += f"; đã bỏ {len(t['skipped_rows'])} dòng không phải dữ liệu (tổng/chữ ký/ghi chú)"
+        answers.append(ans)
+        loc = f"{t['sheet']}!{t['row_range'][0]}-{t['row_range'][1]}" if t["row_range"] else t["sheet"]
+        overview.append({"table": t["sheet"], "file": t["file"], "header_row": t["header_row"], "rows": t["rows"],
+                         "id_column": idc["column"] if idc else None, "filter": t["filter"],
+                         "skipped": ", ".join(map(str, t["skipped_rows"][:20])), "_src": _src(t["file_id"], loc)})
+        for c in t["columns"]:
+            colrows.append({"table": t["sheet"], "column": c["column"], "non_empty": c["non_empty"], "distinct": c["distinct"],
+                            "min": c.get("min"), "max": c.get("max"), "avg": c.get("avg"),
+                            "note": "dữ liệu cá nhân — không liệt kê giá trị" if c["sensitive"] else ""})
+            for v, n in c.get("distribution") or []:
+                dist.append({"table": t["sheet"], "column": c["column"], "value": v, "count": n,
+                             "pct": money.fmt((money.to_decimal(n) / max(1, t["rows"])).quantize(money.to_decimal("0.0001")))})
+    run.note("Số dòng dữ liệu = các dòng dưới dòng tiêu đề, bỏ dòng tổng cộng và dòng chữ ký/ghi chú (ít ô hơn nửa số cột).")
+    sections = [
+        {"name": "Tổng quan bảng", "title": "Số dòng dữ liệu theo từng bảng", "columns": [
+            {"key": "table", "label": "Bảng/sheet"}, {"key": "file", "label": "File"}, {"key": "header_row", "label": "Dòng tiêu đề", "type": "number"},
+            {"key": "rows", "label": "Số dòng dữ liệu", "type": "number"}, {"key": "id_column", "label": "Cột định danh"},
+            {"key": "filter", "label": "Bộ lọc"}, {"key": "skipped", "label": "Dòng đã bỏ qua"}], "rows": overview},
+        {"name": "Thống kê cột", "title": "Thống kê từng cột", "columns": [
+            {"key": "table", "label": "Bảng"}, {"key": "column", "label": "Cột"}, {"key": "non_empty", "label": "Có giá trị", "type": "number"},
+            {"key": "distinct", "label": "Khác nhau", "type": "number"}, {"key": "min", "label": "Nhỏ nhất", "type": "number"},
+            {"key": "max", "label": "Lớn nhất", "type": "number"}, {"key": "avg", "label": "Trung bình", "type": "number"},
+            {"key": "note", "label": "Ghi chú"}], "rows": colrows}]
+    if dist:
+        sections.append({"name": "Phân bố", "title": "Phân bố theo cột ít giá trị", "columns": [
+            {"key": "table", "label": "Bảng"}, {"key": "column", "label": "Cột"}, {"key": "value", "label": "Giá trị"},
+            {"key": "count", "label": "Số dòng", "type": "number"}, {"key": "pct", "label": "Tỉ lệ", "type": "percent"}], "rows": dist})
+    return {"summary": "; ".join(answers), "data": {"tables": len(tabs), "rows": [t["rows"] for t in tabs]}, "sections": sections}
+
+
 @tool(name="propose_journal_entries", description="Đề xuất định khoản từ hoá đơn đã kiểm tra (chỉ đề xuất, không ghi sổ). Thiếu thông tin → hỏi người dùng.",
       task_class=PROPOSE, permission="edit_draft", params=obj({"answers": {"type": "object"}}),
       side_effects="creates PROPOSED journal entries (idempotent by invoice)", risk="medium", idempotency="idempotency_key=invoice:<id>:v1")
@@ -549,7 +601,7 @@ def build_ar_ap(run, p):
         raise NeedsInput("Không có hoá đơn để lập công nợ.")
     paid = {}
     q = ",".join("?" for _ in run.file_ids) or "''"
-    bank = db.all_(f"SELECT id, txn_date date, amount, reference, description, counterparty FROM bank_transactions WHERE org_id=? AND file_id IN ({q})",
+    bank = db.all_(f"SELECT id, txn_date date, amount, reference, description, counterparty FROM cur_bank_transactions WHERE org_id=? AND file_id IN ({q})",
                    (org, *run.file_ids))
     if bank:
         book = [{"id": i["id"], "date": i["issue_date"], "amount": i["total"] if i["direction"] == "sale" else money.fmt(-money.D(i["total"])),

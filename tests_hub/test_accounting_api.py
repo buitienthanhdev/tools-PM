@@ -428,3 +428,15 @@ def test_admin_health_includes_accounting(app):
 
     st = health.status()
     assert "DB ổn" in st["detail"] and "worker 0/1" in st["detail"] and st["ok"] is False  # test không chạy worker
+
+
+def test_how_many_people_question(app, golden, expected):
+    c = _login(app, "a@x.com")
+    org = _org(c)
+    conv = _conv(c, org)
+    upload(c, org, [golden / expected["roster"]["file"]], conv)
+    v = _run(c, org, conv, "bao nhiêu người trong này")
+    step = next(s for s in v["steps"] if s["tool"] == "profile_tables")
+    assert step["status"] == "COMPLETED" and "120 dòng dữ liệu" in step["summary"] and "Mã SV" in step["summary"]
+    msg = c.get(f"/api/accounting/o/{org}/conversations/{conv}").json["messages"][-1]["content"]
+    assert "120 dòng dữ liệu" in msg

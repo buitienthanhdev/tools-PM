@@ -138,19 +138,19 @@ class Run:
         org, ids = self.ctx.org_id, self.file_ids
         q = ",".join("?" for _ in ids) or "''"
         a = (org, *ids)
-        inv = db.all_(f"SELECT status, currency, issue_date FROM invoices WHERE org_id=? AND file_id IN ({q})", a)
+        inv = db.all_(f"SELECT status, currency, issue_date FROM cur_invoices WHERE org_id=? AND file_id IN ({q})", a)
         st = {}
         for i in inv:
             st[i["status"]] = st.get(i["status"], 0) + 1
         dates = [i["issue_date"] for i in inv if i["issue_date"]]
-        dates += [r["d"] for r in db.all_(f"SELECT txn_date d FROM bank_transactions WHERE org_id=? AND file_id IN ({q}) AND txn_date IS NOT NULL", a)]
-        dates += [r["d"] for r in db.all_(f"SELECT entry_date d FROM imported_entries WHERE org_id=? AND file_id IN ({q}) AND entry_date IS NOT NULL", a)]
+        dates += [r["d"] for r in db.all_(f"SELECT txn_date d FROM cur_bank_transactions WHERE org_id=? AND file_id IN ({q}) AND txn_date IS NOT NULL", a)]
+        dates += [r["d"] for r in db.all_(f"SELECT entry_date d FROM cur_imported_entries WHERE org_id=? AND file_id IN ({q}) AND entry_date IS NOT NULL", a)]
         self._manifest = {
             "files": [{"name": f["original_name"], "kind": f["kind"]} for f in self.files()],
             "invoices": len(inv), "invoice_status": st,
-            "bank_txns": db.one(f"SELECT count(*) n FROM bank_transactions WHERE org_id=? AND file_id IN ({q})", a)["n"],
-            "ledger_entries": db.one(f"SELECT count(*) n FROM imported_entries WHERE org_id=? AND file_id IN ({q})", a)["n"],
-            "tables": db.one(f"SELECT count(*) n FROM documents WHERE org_id=? AND doc_type='table' AND file_id IN ({q})", a)["n"],
+            "bank_txns": db.one(f"SELECT count(*) n FROM cur_bank_transactions WHERE org_id=? AND file_id IN ({q})", a)["n"],
+            "ledger_entries": db.one(f"SELECT count(*) n FROM cur_imported_entries WHERE org_id=? AND file_id IN ({q})", a)["n"],
+            "tables": db.one(f"SELECT count(*) n FROM cur_documents WHERE org_id=? AND doc_type IN ('table') AND file_id IN ({q})", a)["n"],
             "workbooks": sum(1 for f in self.files() if f["kind"] in ("xlsx", "xlsm")),
             "currencies": sorted({i["currency"] or "VND" for i in inv}),
             "date_range": [min(dates), max(dates)] if dates else None,

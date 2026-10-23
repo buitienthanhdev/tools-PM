@@ -8,7 +8,7 @@ import io
 import os
 
 import pytest
-from accounting_fixture import configure, ingest, new_ctx
+from accounting_fixture import ORG_TAX, configure, ingest, new_ctx
 
 
 @pytest.fixture()
@@ -271,3 +271,41 @@ def test_ocr_scanned_invoice(tmp_path, golden):
     fl = db.all_("SELECT validation_status, model_id FROM fields WHERE org_id=?", (ctx.org_id,))
     assert fl and all(f["validation_status"] in ("NEEDS_REVIEW", "UNKNOWN") for f in fl if f["validation_status"] != "EXTRACTED")
     assert all(f["model_id"] for f in fl)
+
+
+def test_generic_list_detected_and_profiled(env, golden, expected):
+    """Hồi quy từ production: danh sách sinh viên (không có tiêu đề kế toán) trước đây bị bỏ qua hoàn toàn."""
+    from modules.accounting import db
+    from modules.accounting.engine import analysis
+
+    ctx = new_ctx()
+    _, ids = ingest(ctx, [golden / expected["roster"]["file"]])
+    d = db.one("SELECT data_json FROM cur_documents WHERE org_id=? AND doc_type='table'", (ctx.org_id,))
+    assert d is not None
+    t = analysis.profile(ctx.org_id, ids)[0]
+    assert t["header_row"] == 9 and t["rows"] == expected["roster"]["rows"]
+    assert len(t["skipped_rows"]) == expected["roster"]["skipped_footer_rows"]  # dòng ngày tháng, chức danh, chữ ký
+    cols = {c["column"]: c for c in t["columns"]}
+    assert cols["Mã SV"]["id_like"] and cols["Mã SV"]["distinct"] == 120
+    assert dict(cols["Phái"]["distribution"]) == {"Nam": expected["roster"]["male"], "Nữ": expected["roster"]["female"]}
+    for sensitive in ("Họ đệm", "Tên", "Ngày sinh", "Số CCCD"):
+        assert cols[sensitive]["sensitive"] and "distribution" not in cols[sensitive]
+    girls = analysis.profile(ctx.org_id, ids, filter_column="Phái", filter_value="Nữ")[0]
+    assert girls["rows"] == 40
+
+
+def test_reextraction_supersedes_without_double_counting(env, golden, monkeypatch):
+    from modules.accounting import db, extract
+    from modules.accounting.extract import office
+
+    ctx = new_ctx()
+    _, ids = ingest(ctx, [golden / "sao_ke_vcb_032026.xlsx"])
+    n = lambda: db.one("SELECT count(*) n FROM cur_bank_transactions WHERE org_id=?", (ctx.org_id,))["n"]  # noqa: E731
+    assert n() == 10
+    monkeypatch.setattr(office, "VERSION", "9.9.9")
+    monkeypatch.setitem(extract.PARSERS, "xlsx", ("excel_openpyxl", "9.9.9"))
+    e = extract.ensure(ctx.org_id, ids[0], ORG_TAX)
+    assert e["parser_version"] == "9.9.9" and n() == 10  # không nhân đôi
+    sts = sorted(r["status"] for r in db.all_("SELECT status FROM extractions WHERE file_id=?", (ids[0],)))
+    assert sts == ["OK", "SUPERSEDED"]
+    assert db.one("SELECT count(*) n FROM bank_transactions WHERE org_id=?", (ctx.org_id,))["n"] == 20  # lịch sử giữ nguyên

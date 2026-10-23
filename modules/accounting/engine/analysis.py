@@ -15,8 +15,8 @@ VERIFIED_SET = ("VERIFIED", "VALID_EXTRACTED", "REVIEWED")
 
 def invoices(org_id, file_ids=None):
     rows = db.all_(
-        """SELECT i.*, f.original_name file_name, d.data_json doc_data FROM invoices i
-           JOIN files f ON f.id=i.file_id JOIN documents d ON d.id=i.document_id WHERE i.org_id=?
+        """SELECT i.*, f.original_name file_name, d.data_json doc_data FROM cur_invoices i
+           JOIN files f ON f.id=i.file_id JOIN cur_documents d ON d.id=i.document_id WHERE i.org_id=?
            ORDER BY i.issue_date, i.number""", (org_id,))
     scope = set(file_ids or [])
     out = []
@@ -116,7 +116,7 @@ def filter_invoices(rows, min_total=None, max_total=None, date_from=None, date_t
 
 def _docs(org_id, file_ids, types):
     q = ",".join("?" for _ in types)
-    rows = db.all_(f"""SELECT d.*, f.original_name file_name FROM documents d JOIN files f ON f.id=d.file_id
+    rows = db.all_(f"""SELECT d.*, f.original_name file_name FROM cur_documents d JOIN files f ON f.id=d.file_id
                        WHERE d.org_id=? AND d.doc_type IN ({q})""", (org_id, *types))
     scope = set(file_ids or [])
     return [dict(r, data=db.loads(r["data_json"], {})) for r in rows if not scope or r["file_id"] in scope]
@@ -250,3 +250,66 @@ def ar_ap(rows, paid_by_invoice=None, as_of=None):
         res[side] = sorted(res[side].values(), key=lambda e: -e["open"])
     res["buckets"] = buckets
     return res
+
+
+# ── Thống kê bảng bất kỳ (danh sách, bảng kê) ───────────────────
+SENSITIVE_HINTS = ("cccd", "cmnd", "can cuoc", "ho ten", "ho dem", "ho va ten", "ten", "ngay sinh", "dien thoai", "sdt",
+                   "email", "dia chi", "so tai khoan", "so tk", "ma so thue", "mst", "ho chieu")
+ID_HINTS = ("stt", "ma", "so", "id", "code", "msv", "mssv")
+
+
+def _sensitive(label):
+    f = fold(label)
+    return any(f == h or f.startswith(h + " ") or f.endswith(" " + h) or f" {h} " in f" {f} " for h in SENSITIVE_HINTS)
+
+
+def _num(v):
+    if isinstance(v, bool) or v in (None, ""):
+        return None
+    if isinstance(v, (int, float)):
+        return money.to_decimal(v)
+    p = money.parse_amount(str(v), "USD")
+    return p.value if p.status == "OK" else None
+
+
+def profile(org_id, file_ids=None, filter_column=None, filter_value=None, group_by=None):
+    """Đếm dòng, giá trị khác nhau, min/max/trung bình cột số, phân bố cột ít giá trị — cho mọi bảng có tiêu đề."""
+    out = []
+    for d in _docs(org_id, file_ids, ("table", "ledger", "bank_statement")):
+        data = d["data"]
+        header = data.get("header") or []
+        rows = data.get("rows") or []
+        nums = data.get("row_numbers") or []
+        cols = [(ci, h) for ci, h in enumerate(header) if str(h).strip()]
+        applied = None
+        if filter_column:
+            fc = next((ci for ci, h in cols if fold(h) == fold(filter_column) or fold(filter_column) in fold(h)), None)
+            if fc is None:
+                continue
+            needle = fold(filter_value)
+            keep = [i for i, r in enumerate(rows) if fc < len(r) and needle in fold(r[fc])]
+            rows, nums = [rows[i] for i in keep], [nums[i] for i in keep]
+            applied = f"'{header[fc]}' chứa '{filter_value}'"
+        stats = []
+        for ci, h in cols:
+            vals = [r[ci] for r in rows if ci < len(r) and r[ci] not in (None, "")]
+            distinct = {fold(v) if isinstance(v, str) else str(v) for v in vals}
+            numeric = [x for x in (_num(v) for v in vals) if x is not None]
+            st = {"column": h, "non_empty": len(vals), "distinct": len(distinct), "sensitive": _sensitive(h)}
+            if vals and len(numeric) >= 0.9 * len(vals) and not st["sensitive"]:
+                st.update(min=money.fmt(min(numeric)), max=money.fmt(max(numeric)),
+                          avg=money.fmt((money.sum_(numeric) / len(numeric)).quantize(money.to_decimal("0.01"))))
+            want_dist = fold(group_by) in fold(h) if group_by else (len(distinct) <= 12 and len(distinct) < 0.5 * max(1, len(vals)))
+            if want_dist and not st["sensitive"] and len(distinct) <= 50:
+                counts = {}
+                for v in vals:
+                    k = str(v).strip()
+                    counts[k] = counts.get(k, 0) + 1
+                st["distribution"] = sorted(counts.items(), key=lambda kv: -kv[1])
+            st["id_like"] = bool(vals) and len(distinct) == len(vals) == len(rows) and any(
+                fold(h) == x or fold(h).startswith(x + " ") for x in ID_HINTS)
+            stats.append(st)
+        out.append({"file": d["file_name"], "file_id": d["file_id"], "sheet": data.get("sheet"), "header_row": data.get("header_row"),
+                    "rows": len(rows), "row_range": [nums[0], nums[-1]] if nums else None, "columns": stats,
+                    "skipped_rows": data.get("skipped_rows") or [], "filter": applied})
+    return out

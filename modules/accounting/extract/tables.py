@@ -125,6 +125,19 @@ def classify(roles, context):
     return "table", None
 
 
+def find_generic_header(grid, scan_rows=30):
+    """Bảng không có tiêu đề kế toán (danh sách, bảng kê): dòng đầu tiên có ≥3 ô, phần lớn là chữ,
+    và các dòng ngay sau có độ rộng tương đương."""
+    for r, row in enumerate(grid[:scan_rows]):
+        cells = [v for v in row if v not in (None, "")]
+        if len(cells) < 3 or sum(isinstance(v, str) for v in cells) / len(cells) < 0.7:
+            continue
+        nxt = [sum(1 for v in x if v not in (None, "")) for x in grid[r + 1:r + 6]]
+        if nxt and max(nxt) >= max(2, len(cells) // 2):
+            return r
+    return None
+
+
 def _cell_ref(sheet, r0, c0):
     return f"{col_letter(c0)}{r0 + 1}"
 
@@ -132,19 +145,29 @@ def _cell_ref(sheet, r0, c0):
 def build_docs(grid, sheet_name, file_name, currency="VND"):
     """grid: danh sách dòng (list giá trị). Trả về list Doc (thường 1) cho bảng phát hiện được."""
     header_row, roles = find_header(grid)
-    if header_row is None:
-        return []
+    generic = header_row is None
+    if generic:
+        header_row = find_generic_header(grid)
+        if header_row is None:
+            return []
     context = _context_text(grid, header_row, sheet_name, file_name)
     kind, semantics = classify(roles, context)
     header = [str(v).strip() if v is not None else "" for v in grid[header_row]]
-    body = []
+    width = sum(1 for h in header if h)
+    min_cells = max(2, (width + 1) // 2)
+    body, skipped = [], []
     for r in range(header_row + 1, len(grid)):
         row = grid[r]
-        if not any(v not in (None, "") for v in row):
+        filled = sum(1 for v in row if v not in (None, ""))
+        if not filled:
             continue
         first = fold(row[0]) if row else ""
         if first.startswith(("tong cong", "cong phat sinh", "total", "so du dau", "so du cuoi", "cong")):
+            skipped.append(r + 1)
             continue  # dòng tổng/số dư của báo cáo nguồn, không phải giao dịch
+        if generic and filled < min_cells:
+            skipped.append(r + 1)  # chữ ký, ngày tháng, ghi chú cuối trang — không phải dòng dữ liệu
+            continue
         body.append((r, row))
     colmap = {role: c for c, role in roles.items()}
     title = f"{file_name} — {sheet_name}" if sheet_name else file_name
@@ -155,7 +178,8 @@ def build_docs(grid, sheet_name, file_name, currency="VND"):
         "columns": {role: col_letter(c) for c, role in roles.items()},
         "col_index": {role: c for c, role in roles.items()},
         "context": context[:300],
-        "semantics": semantics, "table_kind": kind,
+        "semantics": semantics, "table_kind": "generic" if generic else kind,
+        "skipped_rows": skipped[:200],
     }
     date_vals = [row[colmap["date"]] for _, row in body if "date" in colmap and colmap["date"] < len(row)]
     order = date_order(date_vals)

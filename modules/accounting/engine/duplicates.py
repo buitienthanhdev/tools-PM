@@ -25,7 +25,7 @@ def _days(a, b):
 
 def _scope_invoices(org_id, file_ids):
     rows = db.all_(
-        """SELECT i.*, f.original_name file_name FROM invoices i JOIN files f ON f.id=i.file_id
+        """SELECT i.*, f.original_name file_name FROM cur_invoices i JOIN files f ON f.id=i.file_id
            WHERE i.org_id=?""", (org_id,))
     scope = set(file_ids or [])
     return rows, (lambda r: not scope or r["file_id"] in scope)
@@ -80,7 +80,7 @@ def detect(org_id, file_ids=None, tolerance_days=3):
                        "reason": f"Khác số hoá đơn nhưng cùng người bán {tax}, cùng ngày {d}, cùng tổng {total} — chỉ là nghi vấn"})
 
     # Dòng sao kê trùng
-    q = "SELECT b.*, f.original_name file_name FROM bank_transactions b JOIN files f ON f.id=b.file_id WHERE b.org_id=?"
+    q = "SELECT b.*, f.original_name file_name FROM cur_bank_transactions b JOIN files f ON f.id=b.file_id WHERE b.org_id=?"
     txns = [t for t in db.all_(q, (org_id,))]
     rows = defaultdict(list)
     for t in txns:

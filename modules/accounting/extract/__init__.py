@@ -97,6 +97,13 @@ def persist(org_id, f, res, org_tax_id=None, actor="agent"):
             "stats_json": db.dumps({**res.stats, "model_id": res.model_id}), "text_content": res.text[:1_000_000],
             "created_at": db.now(),
         }
+        if res.status in ("OK", "PARTIAL"):
+            old = [r[0] for r in c.execute(
+                "SELECT id FROM extractions WHERE file_id=? AND status IN ('OK','PARTIAL')", (f["id"],))]
+            if old:
+                c.execute(f"UPDATE extractions SET status='SUPERSEDED' WHERE id IN ({','.join('?' for _ in old)})", old)
+                audit.log(c, org_id, actor, "extract.supersede", "file", f["id"], superseded=old,
+                          new_parser=f"{res.parser}@{res.version}")
         db.insert(c, "extractions", row)
         for doc in res.docs:
             _persist_doc(c, org_id, f, ext_id, res, doc, org_tax_id)
