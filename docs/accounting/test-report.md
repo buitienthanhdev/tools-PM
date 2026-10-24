@@ -84,3 +84,15 @@ kiểu ngân hàng khác, bảng lương, hoá đơn, file 50.000 dòng, scan m�
 | `data/accounting/` không nằm trong `.gitignore` | Đã thêm | — |
 
 Còn lại: kết quả phụ thuộc LLM chọn đúng công cụ — các câu trên đều đúng trong lượt thử, nhưng chưa đo trên tập câu hỏi lớn.
+
+## Đánh giá câu hỏi tự do qua LLM thật (2026-10-24, `python -m modules.accounting.golden.qa_eval`)
+
+101 câu tiếng Việt (có dấu / không dấu / khẩu ngữ) trên 6 bộ dữ liệu: danh sách sinh viên, bảng kê bán hàng 2 tầng tiêu đề,
+sao kê CSV, bảng lương, 5.000 dòng doanh thu, hoá đơn. Đáp án tính độc lập từ file nguồn.
+
+| Lần | Đúng | Ghi chú |
+| --- | --- | --- |
+| 1 | 96/101 (95%) | Sai: "doanh số"/"tiền bán" không nhận là Thành tiền; "lương" hiểu là lương cơ bản; điều kiện "tháng 5" áp vào bảng không có cột ngày → 0 |
+| 2 (sau sửa) | **101/101** | 101/101 kế hoạch do LLM lập, 2,7 s/câu |
+
+Giới hạn: bộ câu do nhóm phát triển viết; câu hỏi thật của người dùng có thể đa dạng hơn.

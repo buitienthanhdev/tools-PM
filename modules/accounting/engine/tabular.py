@@ -23,7 +23,7 @@ SYNONYMS = {
               "diem tong ket", "trung binh chung", "tbcht"],
     "rank": ["xep loai", "hoc luc", "loai", "xep hang", "rank"],
     "name": ["ho ten", "ho va ten", "ten", "ho dem", "full name", "name", "ten nhan vien", "ten sinh vien"],
-    "revenue": ["doanh thu", "thanh tien", "tong tien", "so tien", "gia tri", "tien hang", "amount", "revenue", "sales",
+    "revenue": ["doanh thu", "doanh so", "tien ban", "ban duoc", "thanh tien", "tong tien", "so tien", "gia tri", "tien hang", "amount", "revenue", "sales",
                 "tong thanh toan", "tong cong"],
     "quantity": ["so luong", "sl", "qty", "quantity", "khoi luong"],
     "price": ["don gia", "gia", "unit price", "price", "gia ban"],
@@ -75,6 +75,11 @@ def resolve(header, want, rows=None, numeric=False):
     for ci, h in labels:
         if h == fw and ok(ci):
             return ci, None
+    # "lương" chung chung = lương thực nhận (không phải lương cơ bản) nếu bảng có cột đó
+    if "luong" in fw.split() and "co ban" not in fw:
+        net = [ci for ci, h in labels if ok(ci) and h in ("thuc linh", "thuc nhan", "luong thuc nhan", "luong thuc linh", "tong luong")]
+        if net:
+            return net[0], f"'{want}' được hiểu là cột '{header[net[0]]}' (lương thực nhận; hỏi rõ 'lương cơ bản' nếu cần cột đó)"
     cands = [ci for ci, h in labels if ok(ci) and len(h) >= 2 and (fw in h.split() or h in fw.split() or (len(fw) >= 4 and fw in h)
                                                                     or (len(h) >= 4 and h in fw))]
     if cands:
@@ -242,6 +247,10 @@ def analyze(org_id, file_ids, operation, value_column=None, group_by=None, filte
                         note = f"Lọc '{f['value']}' theo cột '{header[col]}' (cột chứa giá trị này)"
                 if col is None:
                     raise ColumnNotFound(f.get("column") or f.get("value"), [t])
+                if isinstance(col, str) and _date_col(t) is None:
+                    # Bảng không có cột ngày (vd bảng lương tháng 5): điều kiện tháng/năm không áp được → bỏ, nói rõ
+                    r_notes.append(f"Bảng '{t['sheet']}' không có cột ngày — bỏ điều kiện '{f.get('column')} = {f.get('value')}', tính trên toàn bảng")
+                    continue
                 if note:
                     r_notes.append(note)
                 flt.append((col, f.get("op") or "eq", f.get("value")))

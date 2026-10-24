@@ -722,7 +722,10 @@ def analyze_table(run, p):
     if len(res["results"]) > 1 and op == "sum" and not p.get("group_by"):
         tot = money.sum_(r["sum"] for r in res["results"] if r["sum"] is not None)
         answers.append(f"Cộng {len(res['results'])} bảng: {money.vn(tot)}.")
-    return {"summary": " ".join(answers), "answer": " ".join(answers),
+    shown = " ".join(answers)
+    if res["notes"]:  # cách hiểu cột / điều kiện bị bỏ phải hiện cùng con số, không chỉ nằm trong file Excel
+        shown += " (" + "; ".join(res["notes"][:3]) + ")"
+    return {"summary": shown, "answer": shown,
             "data": {"results": len(res["results"]), "matched": [r["matched"] for r in res["results"]]}, "sections": sections}
 
 

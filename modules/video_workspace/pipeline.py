@@ -453,10 +453,20 @@ class Runner:
         fps = None
         if st["first"]:
             t1, n1 = st["first"]
+            # Tốc độ theo cửa sổ 60 giây gần nhất (tốc độ giảm dần khi chạy lâu); thử tải video 30 phút: dùng trung bình
+            # từ đầu làm ETA ngắn hơn thực tế 6–9%
+            hist = st.setdefault("hist", [])
+            if not hist or hist[-1][1] != done:
+                hist.append((now, done))
+            while len(hist) > 2 and now - hist[0][0] > 60:
+                hist.pop(0)
             if now - t1 >= 5 and done - n1 > 0:
                 fps = (done - n1) / (now - t1)
+                if len(hist) >= 2 and hist[-1][0] - hist[0][0] >= 10:
+                    fps = (hist[-1][1] - hist[0][1]) / (hist[-1][0] - hist[0][0]) or fps
                 if done / total >= 0.02:
-                    eta = (total - done) / fps
+                    # + bước cuối (đóng file, ghép âm thanh/phụ đề, đổi fps): đo được khoảng 6% thời gian xử lý khung
+                    eta = (total - done) / fps * 1.06 + (5 if not p.get("resample") else (total - done) / fps * 0.3)
         self.update(stage="processing", message="Đang xử lý khung hình", frames_done=done, frames_total=total,
                     progress=round(min(99.0, 100 * done / total), 1) if total else None,
                     eta_s=round(eta) if eta is not None else None, fps=round(fps, 2) if fps else None)

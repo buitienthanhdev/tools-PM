@@ -145,6 +145,19 @@ Với RIFE ×2, khung gốc chớp sáng nằm đúng ở 1,000 s. Khung nội s
 
 - Chỉ chạy backend PyTorch CUDA. TensorRT và NCNN chưa bật (chưa kiểm thử với torch 2.14).
 - HDR được xử lý bằng chế độ HDR của RVE và xuất HEVC 10-bit. Nhiều trình duyệt không phát được HEVC, nhưng file vẫn tải xuống được. Màu HDR chỉ kiểm tra ở mức metadata, chưa đo bằng mắt trên màn HDR.
-- Video SDR 10-bit được xử lý ở 8-bit (có cảnh báo). Phụ đề không được giữ.
+- Video SDR 10-bit được xử lý ở 8-bit (có cảnh báo). Phụ đề dạng ảnh (PGS/DVD) bị bỏ; phụ đề chữ được giữ (mov_text).
 - Hệ số nội suy chỉ là số nguyên. Từ 24 fps lên đúng 60 fps là không làm được (24 × 2,5).
 - Một video job giữ GPU độc quyền. Trong lúc đó Whisper, Nét Ảnh và các công cụ dùng LLM phải xếp hàng chờ.
+
+## Thử tải (2026-10-24, staging, RTX 5090)
+
+| Hạng mục | Kết quả |
+| --- | --- |
+| Tải lên 2,79 GB theo phần (localhost) | 24 s (117 MB/s); RAM máy chủ ổn định ~770 MB |
+| Video 29:50 (720p) upscale 2x | 12,9 phút (~58 khung/s); 2560×1068, 24 fps, đúng thời lượng, lệch tiếng 0 ms; 2,4 GB |
+| 1920×800 → 3832×1600 + RIFE ×4 (96 fps), 10 s | 66 s; VRAM tối đa 8,9 GB / 32 GB |
+| 24 → đúng 60 fps (×3 rồi đổi fps) | 60 fps, đúng thời lượng |
+| MKV phụ đề SRT | MP4 có phụ đề mov_text |
+| Chia lượt 2 người dùng | A1 → B1 → A2 (B không phải đợi hết job của A) |
+| Thời gian còn lại (ETA) | Bản đầu ngắn hơn thực tế 6–9% → đã đổi sang tốc độ cửa sổ 60 s + thời gian bước cuối |
+| Lỗi tìm thấy & đã sửa | Đầu vào SAR gần vuông (1199:1200) bị từ chối do kích thước tính trước lệch 4 px so với ffmpeg |
