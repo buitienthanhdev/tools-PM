@@ -33,6 +33,7 @@ _started = False
 _live = {}  # visitor/user key → {user, path, ts, ip, country, device, browser}
 _live_lock = threading.Lock()
 _rate = {}  # ip → deque[timestamps] cho beacon công khai
+_rate_lock = threading.Lock()
 dropped = 0
 
 SCHEMA = """
@@ -106,6 +107,17 @@ def query(sql, args=()):
         c.close()
 
 
+def iter_query(sql, args=()):
+    """Như query() nhưng trả từng dòng (xuất CSV lớn không giữ cả bảng trong bộ nhớ)."""
+    c = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=30)
+    c.row_factory = sqlite3.Row
+    try:
+        for r in c.execute(sql, args):
+            yield dict(r)
+    finally:
+        c.close()
+
+
 def _writer():
     last_prune = 0.0
     while True:
@@ -166,7 +178,8 @@ def reset_for_tests(path):
         DB_PATH = path
     with _live_lock:
         _live.clear()
-    _rate.clear()
+    with _rate_lock:
+        _rate.clear()
 
 
 def flush():
@@ -350,15 +363,16 @@ def event(kind, user=None, actor=None, **detail):
 def rate_ok(limit=120, window=60):
     ip = client_ip()
     now = time.time()
-    dq = _rate.setdefault(ip, deque())
-    while dq and dq[0] < now - window:
-        dq.popleft()
-    if len(dq) >= limit:
-        return False
-    dq.append(now)
-    if len(_rate) > 20000:
-        _rate.clear()
-    return True
+    with _rate_lock:  # waitress chạy nhiều luồng
+        dq = _rate.setdefault(ip, deque())
+        while dq and dq[0] < now - window:
+            dq.popleft()
+        if len(dq) >= limit:
+            return False
+        dq.append(now)
+        if len(_rate) > 20000:
+            _rate.clear()
+        return True
 
 
 def _clean(v, n):

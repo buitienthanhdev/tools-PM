@@ -54,9 +54,14 @@ def evict_ollama():
 register("ollama", evict_ollama)
 
 
+class Aborted(Exception):
+    """Tác vụ bị huỷ khi còn đang xếp hàng chờ GPU."""
+
+
 @contextmanager
-def task(name, family, on_wait=None):
-    """with gpu.task("whisper:abc", "whisper"): ... — xếp hàng rồi chạy độc quyền."""
+def task(name, family, on_wait=None, should_abort=None):
+    """with gpu.task("whisper:abc", "whisper"): ... — xếp hàng rồi chạy độc quyền.
+    should_abort(): trả True để rời hàng đợi (raise Aborted) — kiểm tra mỗi giây trong lúc chờ."""
     with _meta:
         _state["waiting"].append(name)
         pos = len(_state["waiting"])
@@ -65,7 +70,12 @@ def task(name, family, on_wait=None):
             on_wait(pos - 1 + (1 if _lock.locked() else 0))
         except Exception:
             pass
-    _lock.acquire()
+    while not _lock.acquire(timeout=1):
+        if should_abort and should_abort():
+            with _meta:
+                if name in _state["waiting"]:
+                    _state["waiting"].remove(name)
+            raise Aborted(name)
     try:
         with _meta:
             if name in _state["waiting"]:

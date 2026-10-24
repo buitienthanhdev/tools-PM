@@ -18,7 +18,7 @@ from . import catalog, settings
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _verified = {}  # đường dẫn → (size, mtime) đã kiểm SHA-256
 _dl_lock = threading.Lock()
-_caps = {"checked_at": 0, "result": None, "running": False}
+_caps = {"checked_at": 0, "result": None, "running": False, "done": None}
 _caps_lock = threading.Lock()
 
 
@@ -124,25 +124,30 @@ def _detect():
 
 
 def capabilities(refresh=False, wait=False):
-    """Kết quả nhận diện (cache 1 giờ); chạy nền lần đầu để không chặn request."""
+    """Kết quả nhận diện (cache 1 giờ). Chỉ một lần kiểm tra chạy tại một thời điểm; wait=True chờ kết quả
+    (worker dùng trước khi chạy job), wait=False trả ngay (None = đang kiểm tra) và kiểm tra chạy nền."""
     with _caps_lock:
         fresh = _caps["result"] is not None and time.time() - _caps["checked_at"] < 3600
-        if (fresh and not refresh) or _caps["running"]:
-            if not wait or _caps["result"] is not None:
-                return _caps["result"]
-        _caps["running"] = True
+        start = not _caps["running"] and (refresh or not fresh)
+        if start:
+            _caps["running"] = True
+            _caps["done"] = threading.Event()
+        done = _caps.get("done")
+        result = _caps["result"]
 
     def work():
+        r = None
         try:
             r = _detect()
         finally:
             with _caps_lock:
-                _caps["running"] = False
-        with _caps_lock:
-            _caps.update(result=r, checked_at=time.time())
+                _caps.update(result=r if r is not None else {"ok": False, "error": "Kiểm tra GPU lỗi"}, checked_at=time.time(),
+                             running=False)
+            done.set()
 
-    if wait:
-        work()
-    else:
+    if start:
         threading.Thread(target=work, daemon=True, name="video-caps").start()
-    return _caps["result"]
+    if wait and done is not None and (start or result is None or refresh):
+        done.wait(240)
+        return _caps["result"]
+    return result

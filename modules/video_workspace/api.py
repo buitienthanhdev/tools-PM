@@ -5,6 +5,7 @@ model trong danh mục đã duyệt và vài tuỳ chọn có giới hạn (pipe
 """
 
 import os
+import queue
 import re
 import subprocess
 import threading
@@ -184,6 +185,12 @@ def upload_complete(uid):
     except subprocess.TimeoutExpired:
         os.remove(final)
         return _err("probe_timeout", "Phân tích file quá lâu — file có thể hỏng", 422)
+    except Exception as e:  # lỗi ngoài dự kiến: không để lại file mồ côi (không bản ghi nào trỏ tới)
+        try:
+            os.remove(final)
+        except OSError:
+            pass
+        return _err("probe_failed", f"Không phân tích được file ({type(e).__name__})", 500)
     if info["duration"] > cfg["max_duration_s"]:
         os.remove(final)
         return _err("too_long", f"Video dài {info['duration']:.0f} giây, vượt giới hạn {cfg['max_duration_s']} giây", 422)
@@ -200,13 +207,45 @@ def upload_complete(uid):
     db.run("INSERT INTO videos (id, owner, name, size, path, info_json, created_at, expires_at) VALUES (?,?,?,?,?,?,?,?)",
            (vid, _user(), u["name"], u["size"], final, db.dumps(info), db.now(), db.now() + cfg["retention_hours"] * 3600))
     if not info["playable"]:
-        threading.Thread(target=_make_proxy, args=(vid,), daemon=True, name=f"video-proxy-{vid[:8]}").start()
+        _proxy_q.put(vid)
     return jsonify({"video": _video_view(db.one("SELECT * FROM videos WHERE id=?", (vid,)))})
+
+
+# Bản xem trước: một hàng đợi, một luồng (giới hạn số ffmpeg chạy cùng lúc); khởi động lại → đưa lại các bản "pending"
+_proxy_q = queue.Queue()
+_proxy_started = False
+
+
+def _proxy_loop():
+    while True:
+        vid = _proxy_q.get()
+        try:
+            _make_proxy(vid)
+        except Exception as e:  # không để luồng chết; đánh dấu thất bại để giao diện thôi chờ
+            print(f"[video] proxy {vid[:8]} lỗi: {type(e).__name__}: {e}")
+            v = db.one("SELECT info_json FROM videos WHERE id=?", (vid,))
+            if v:
+                info = db.loads(v["info_json"], {})
+                info["proxy"] = "failed"
+                db.run("UPDATE videos SET info_json=? WHERE id=?", (db.dumps(info), vid))
+
+
+def start_proxies():
+    global _proxy_started
+    if _proxy_started:
+        return
+    _proxy_started = True
+    for v in db.all_("SELECT id, info_json FROM videos WHERE deleted_at IS NULL"):
+        if (db.loads(v["info_json"], {}) or {}).get("proxy") == "pending":
+            _proxy_q.put(v["id"])
+    threading.Thread(target=_proxy_loop, daemon=True, name="video-proxy").start()
 
 
 def _make_proxy(vid):
     """Bản xem trước H.264 cho file gốc trình duyệt không phát được (dùng NVENC, không chiếm nhân CUDA)."""
     v = db.one("SELECT * FROM videos WHERE id=?", (vid,))
+    if not v or v["deleted_at"] or not os.path.isfile(v["path"]):
+        return
     info = db.loads(v["info_json"], {})
     out = os.path.join(settings.data_dir("videos"), f"{vid}.proxy.mp4")
     base = [settings.ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", "-i", v["path"], "-map", "0:v:0", "-map", "0:a:0?",
@@ -312,9 +351,9 @@ def job_create():
     v = _own_video(vid)
     if not v:
         return _err("not_found", "Không có video", 404)
-    caps = models.capabilities()
-    if models.env_problems() or not (caps and caps.get("ok")):
-        return _err("not_ready", "Máy xử lý video chưa sẵn sàng: " + "; ".join(models.env_problems() or [(caps or {}).get("error") or "đang kiểm tra GPU"]), 503)
+    caps = models.capabilities()  # None = đang kiểm tra GPU (vừa khởi động): vẫn nhận job, worker chờ kết quả kiểm tra
+    if models.env_problems() or (caps is not None and not caps.get("ok")):
+        return _err("not_ready", "Máy xử lý video chưa sẵn sàng: " + "; ".join(models.env_problems() or [caps.get("error") or "không nhận diện được GPU"]), 503)
     p = pipeline.plan(db.loads(v["info_json"]), conf)
     mine = db.one("SELECT count(*) n FROM jobs WHERE owner=? AND status IN ('queued','running')", (_user(),))["n"]
     if mine >= cfg["max_queued_per_user"]:
@@ -405,3 +444,4 @@ def init_app(app):
     app.register_blueprint(bp)
     models.capabilities()  # nhận diện backend chạy nền
     worker.start()
+    start_proxies()

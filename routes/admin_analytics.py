@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import time
 
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 from core import analytics as A
 from core import auth, config, gpu
@@ -44,11 +44,12 @@ def _one(sql, args=()):
 
 
 def _p95(sql, args):
-    vals = [r["ms"] for r in _q(sql, args)]
-    if not vals:
+    """Phân vị 95 tính trong SQLite (đếm rồi lấy đúng một dòng), không nạp toàn bộ giá trị."""
+    n = (_one(f"SELECT count(*) n FROM ({sql})", args) or {}).get("n") or 0
+    if not n:
         return None
-    vals.sort()
-    return round(vals[min(len(vals) - 1, int(0.95 * len(vals)))], 1)
+    r = _one(f"SELECT ms FROM ({sql}) ORDER BY ms LIMIT 1 OFFSET ?", (*args, min(n - 1, int(0.95 * n))))
+    return round(r["ms"], 1) if r else None
 
 
 # ── Beacon công khai ─────────────────────────────────────────
@@ -99,19 +100,22 @@ def _kpis(t0, t1):
 def overview():
     r, t0, t1, span = _range()
     cur, prev = _kpis(t0, t1), _kpis(t0 - span, t0)
-    hourly = span <= 2 * 86400
+    # Gom nhóm trong SQLite (không nạp từng bản ghi vào bộ nhớ); mốc theo giờ địa phương của máy chủ như time.localtime
     if span <= 3600:
-        fmt, step = "%H:%M", 300
-    elif hourly:
-        fmt, step = "%d/%m %H:00", 3600
+        step = 300
+        sql_b = "strftime('%H:', ts, 'unixepoch', 'localtime') || printf('%02d', (CAST(strftime('%M', ts, 'unixepoch', 'localtime') AS INTEGER) / 5) * 5)"
+    elif span <= 2 * 86400:
+        step = 3600
+        sql_b = "strftime('%d/%m %H:00', ts, 'unixepoch', 'localtime')"
     else:
-        fmt, step = "%d/%m", 86400
-    # Mốc thời gian theo giờ địa phương của máy chủ
+        step = 86400
+        sql_b = "strftime('%d/%m', ts, 'unixepoch', 'localtime')"
+
     def bucket(ts):
         lt = time.localtime(ts)
         if step == 300:
             return time.strftime("%H:", lt) + f"{lt.tm_min // 5 * 5:02d}"
-        return time.strftime(fmt, lt)
+        return time.strftime("%d/%m %H:00" if step == 3600 else "%d/%m", lt)
 
     keys = []
     t = t0
@@ -120,19 +124,16 @@ def overview():
         if not keys or keys[-1] != k:
             keys.append(k)
         t += step
-    series = {k: {"t": k, "pageviews": 0, "visitors": set(), "requests": 0, "e4": 0, "e5": 0} for k in keys}
-    for row in _q("SELECT ts, vid FROM pageviews WHERE ts>=? AND ts<? AND device!='bot'", (t0, t1)):
-        s = series.get(bucket(row["ts"]))
-        if s:
-            s["pageviews"] += 1
-            s["visitors"].add(row["vid"])
-    for row in _q("SELECT ts, status FROM requests WHERE ts>=? AND ts<? AND device!='bot'", (t0, t1)):
-        s = series.get(bucket(row["ts"]))
-        if s:
-            s["requests"] += 1
-            s["e4"] += 400 <= row["status"] < 500
-            s["e5"] += row["status"] >= 500
-    out = [{**v, "visitors": len(v["visitors"])} for v in series.values()]
+    series = {k: {"t": k, "pageviews": 0, "visitors": 0, "requests": 0, "e4": 0, "e5": 0} for k in keys}
+    for row in _q(f"""SELECT {sql_b} b, count(*) n, count(DISTINCT vid) v FROM pageviews
+                      WHERE ts>=? AND ts<? AND device!='bot' GROUP BY b""", (t0, t1)):
+        if row["b"] in series:
+            series[row["b"]].update(pageviews=row["n"], visitors=row["v"])
+    for row in _q(f"""SELECT {sql_b} b, count(*) n, sum(status>=400 AND status<500) e4, sum(status>=500) e5 FROM requests
+                      WHERE ts>=? AND ts<? AND device!='bot' GROUP BY b""", (t0, t1)):
+        if row["b"] in series:
+            series[row["b"]].update(requests=row["n"], e4=row["e4"] or 0, e5=row["e5"] or 0)
+    out = list(series.values())
     return jsonify({"range": r, "kpis": cur, "previous": prev, "series": out, "online": len(A.live()),
                     "generated_at": time.time()})
 
@@ -230,7 +231,7 @@ LOG_TABLES = {
 }
 
 
-def _log_rows(limit_max=1000):
+def _log_sql(limit_max=1000):
     kind = request.args.get("kind", "requests")
     if kind not in LOG_TABLES:
         kind = "requests"
@@ -256,8 +257,12 @@ def _log_rows(limit_max=1000):
         where.append("id<?")
         args.append(int(request.args["before"]))
     limit = max(1, min(int(request.args.get("limit") or 200), limit_max))
-    rows = _q(f"{base} WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT {limit}", tuple(args))
-    return kind, r, rows
+    return kind, r, f"{base} WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT {limit}", tuple(args)
+
+
+def _log_rows(limit_max=1000):
+    kind, r, sql, args = _log_sql(limit_max)
+    return kind, r, _q(sql, args)
 
 
 @bp.route("/api/admin/analytics/log")
@@ -268,17 +273,27 @@ def log():
 
 @bp.route("/api/admin/analytics/export.csv")
 def export_csv():
-    kind, r, rows = _log_rows(limit_max=100000)
-    buf = io.StringIO()
-    buf.write("﻿")  # Excel mở đúng tiếng Việt
-    if rows:
-        w = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        for row in rows:
+    """Xuất CSV theo luồng (đọc từng dòng từ SQLite, ghi dần ra response) — không giữ cả bảng trong bộ nhớ."""
+    kind, r, sql, args = _log_sql(limit_max=1_000_000)
+    A.event("admin_export", table=kind, range=r)
+
+    def gen():
+        buf = io.StringIO()
+        w = None
+        yield "﻿"  # Excel mở đúng tiếng Việt
+        for row in A.iter_query(sql, args):
             row["ts"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(row["ts"]))
+            if w is None:
+                w = csv.DictWriter(buf, fieldnames=list(row.keys()))
+                w.writeheader()
             w.writerow(row)
-    A.event("admin_export", table=kind, range=r, rows=len(rows))
-    return Response(buf.getvalue(), mimetype="text/csv; charset=utf-8",
+            if buf.tell() > 64 * 1024:
+                yield buf.getvalue()
+                buf.seek(0)
+                buf.truncate()
+        yield buf.getvalue()
+
+    return Response(stream_with_context(gen()), mimetype="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f"attachment; filename=tracking_{kind}_{r}.csv"})
 
 

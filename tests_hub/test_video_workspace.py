@@ -293,3 +293,120 @@ def test_real_rve_on_gpu(tmp_path):
     assert j["status"] == "completed", j["error_message"]
     o = db.loads(j["output_json"])
     assert (o["video"]["width"], o["video"]["height"]) == (2560, 1068) and o["video"]["fps"] == 48.0 and abs(o["av_offset_ms"]) < 50
+
+
+def test_cancel_while_waiting_for_gpu(env):
+    """Huỷ job đang xếp hàng chờ GPU (công cụ khác đang dùng) phải có hiệu lực ngay, không đợi tới lượt."""
+    from core import gpu
+
+    a = _user(env["app"], "a@x.com")
+    vid = _upload(a, env["clip"]).json["video"]["id"]
+    jid = a.post("/api/video/jobs", json={"video_id": vid, "config": {"upscale": "openproteus-2x"}}).json["job"]["id"]
+    hold, release = threading.Event(), threading.Event()
+
+    def other_tool():
+        with gpu.task("whisper:test", "whisper"):
+            hold.set()
+            release.wait(60)
+
+    th = threading.Thread(target=other_tool)
+    th.start()
+    hold.wait(10)
+    t = threading.Thread(target=_run_next)
+    t.start()
+    for _ in range(50):
+        if "chờ GPU" in (a.get(f"/api/video/jobs/{jid}").json["job"]["message"] or ""):
+            break
+        time.sleep(0.1)
+    t0 = time.time()
+    assert a.post(f"/api/video/jobs/{jid}/cancel").status_code == 200
+    t.join(10)
+    release.set()
+    th.join(10)
+    assert not t.is_alive() and time.time() - t0 < 5
+    assert a.get(f"/api/video/jobs/{jid}").json["job"]["status"] == "cancelled"
+    assert gpu.status()["waiting"] == 0
+
+
+def test_fair_queue_interleaves_users(env):
+    from modules.video_workspace import db, worker
+
+    a, b = _user(env["app"], "a@x.com"), _user(env["app"], "b@x.com")
+    va = _upload(a, env["clip"]).json["video"]["id"]
+    vb = _upload(b, env["clip"]).json["video"]["id"]
+    cfg = {"upscale": "openproteus-2x"}
+    a1 = a.post("/api/video/jobs", json={"video_id": va, "config": cfg}).json["job"]["id"]
+    a2 = a.post("/api/video/jobs", json={"video_id": va, "config": cfg}).json["job"]["id"]
+    b1 = b.post("/api/video/jobs", json={"video_id": vb, "config": cfg}).json["job"]["id"]
+    order = []
+    for _ in range(3):
+        j = worker.claim()
+        order.append(j["id"])
+        db.run("UPDATE jobs SET status='completed' WHERE id=?", (j["id"],))
+    assert order == [a1, b1, a2]  # B không phải đợi hết các job của A
+
+
+def test_job_accepted_while_gpu_check_running(env, monkeypatch):
+    """Ngay sau khởi động (đang kiểm tra GPU) vẫn nhận job; worker chờ kết quả kiểm tra rồi mới chạy."""
+    from modules.video_workspace import models
+
+    state = {"n": 0}
+
+    def caps(refresh=False, wait=False):
+        if not wait:
+            return None  # đang kiểm tra
+        state["n"] += 1
+        return {"ok": True, "gpus": ["Stub"]}
+
+    monkeypatch.setattr(models, "capabilities", caps)
+    a = _user(env["app"], "a@x.com")
+    vid = _upload(a, env["clip"]).json["video"]["id"]
+    r = a.post("/api/video/jobs", json={"video_id": vid, "config": {"upscale": "openproteus-2x"}})
+    assert r.status_code == 200, r.json
+    _run_next()
+    assert a.get(f"/api/video/jobs/{r.json['job']['id']}").json["job"]["status"] == "completed" and state["n"] == 1
+
+
+def test_preview_proxy_recovers_after_restart_and_no_orphans(env, monkeypatch):
+    from modules.video_workspace import api, db, probe, worker
+
+    a = _user(env["app"], "a@x.com")
+    ff = os.path.join(_ffdir(), "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+    mkv = env["tmp"] / "clip.mkv"  # H.264 trong MKV: trình duyệt không phát được → cần bản xem trước
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-i", str(env["clip"]), "-c", "copy", str(mkv)], check=True)
+    monkeypatch.setattr(api, "_proxy_started", False)
+    api.start_proxies()
+    v = _upload(a, mkv).json["video"]
+    assert v["info"]["playable"] is False
+
+    def proxy_state():
+        return db.loads(db.one("SELECT info_json FROM videos WHERE id=?", (v["id"],))["info_json"])
+
+    for _ in range(200):
+        if proxy_state().get("proxy") == "ready":
+            break
+        time.sleep(0.1)
+    info = proxy_state()
+    assert info["proxy"] == "ready" and a.get(f"/api/video/videos/{v['id']}/file").status_code == 200
+    # Giả lập Hub khởi động lại khi bản xem trước đang tạo dở
+    os.remove(info["proxy_path"])
+    info.update(proxy="pending", proxy_path=None)
+    db.run("UPDATE videos SET info_json=? WHERE id=?", (db.dumps(info), v["id"]))
+    monkeypatch.setattr(api, "_proxy_started", False)
+    api.start_proxies()
+    for _ in range(200):
+        if proxy_state().get("proxy") == "ready":
+            break
+        time.sleep(0.1)
+    assert proxy_state()["proxy"] == "ready"
+    # Hết hạn: xoá cả bản xem trước
+    proxy = proxy_state()["proxy_path"]
+    db.run("UPDATE videos SET expires_at=? WHERE id=?", (db.now() - 1, v["id"]))
+    worker.cleanup()
+    assert not os.path.exists(proxy)
+    # Lỗi ngoài dự kiến khi phân tích: không để lại file mồ côi
+    monkeypatch.setattr(probe, "probe", lambda p: (_ for _ in ()).throw(RuntimeError("bất ngờ")))
+    before = set(os.listdir(os.path.join(str(env["tmp"]), "video", "videos")))
+    r = _upload(a, env["clip"])
+    assert r.status_code == 500 and r.json["code"] == "probe_failed"
+    assert set(os.listdir(os.path.join(str(env["tmp"]), "video", "videos"))) == before

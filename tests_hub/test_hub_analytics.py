@@ -134,3 +134,35 @@ def test_path_normalization_and_ua():
     assert analytics.parse_ua("curl/8.4.0")[2] == "bot"
     assert analytics.parse_ua("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36 Edg/130.0")[:3] == ("Edge", "Windows", "desktop")
     assert analytics.module_of("/api/cv/review") == "reviewingcv" and analytics.module_of("/accounting") == "accounting"
+
+
+def test_series_p95_and_streamed_csv_computed_in_sql(hub):
+    """Biểu đồ gom nhóm trong SQLite phải ra đúng số như đếm tay; P95 đúng; CSV theo luồng đủ dòng."""
+    import time as _t
+
+    from core import analytics
+
+    admin = _admin(hub)
+    now = _t.time()
+    base = now - (now % 3600) - 3 * 3600 + 60  # 3 giờ trước, phút thứ 1
+    rows = []
+    for h in range(3):
+        for k in range(10 * (h + 1)):  # giờ 0: 10, giờ 1: 20, giờ 2: 30 yêu cầu
+            rows.append({"ts": base + h * 3600 + k, "method": "GET", "path": "/api/x", "route": "/api/x", "module": "other",
+                         "status": 500 if k == 0 else 200, "ms": float(k + 1), "user": "a@x.com", "ip": "1.1.1.1",
+                         "device": "desktop", "browser": "Edge", "os": "Windows"})
+    for r in rows:
+        analytics._put("requests", r)
+    for k in range(5):
+        analytics._put("pageviews", {"ts": base + 3600 + k, "vid": f"v{k % 2}", "path": "/", "device": "desktop"})
+    analytics.flush()
+    o = admin.get("/api/admin/analytics/overview?range=24h").json
+    by = {s["t"]: s for s in o["series"]}
+    lt = [_t.strftime("%d/%m %H:00", _t.localtime(base + h * 3600)) for h in range(3)]
+    assert [by[k]["requests"] for k in lt] == [10, 20, 30]
+    assert [by[k]["e5"] for k in lt] == [1, 1, 1]
+    assert by[lt[1]]["pageviews"] == 5 and by[lt[1]]["visitors"] == 2
+    ms = sorted(r["ms"] for r in rows)
+    assert o["kpis"]["p95_ms"] == ms[min(len(ms) - 1, int(0.95 * len(ms)))]
+    csv_text = admin.get("/api/admin/analytics/export.csv?kind=requests&range=24h").get_data(as_text=True)
+    assert csv_text.startswith("﻿") and csv_text.count("/api/x") == 60

@@ -20,7 +20,7 @@ import psutil
 
 from core import gpu
 
-from . import db, pipeline, settings
+from . import db, models, pipeline, settings
 
 WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
 _wake = threading.Event()
@@ -92,7 +92,13 @@ def claim():
         running = c.execute("SELECT count(*) FROM jobs WHERE status='running' AND worker=?", (WORKER_ID,)).fetchone()[0]
         if running >= int(cfg["gpu_concurrency"]):
             return None
-        j = c.execute("SELECT * FROM jobs WHERE status='queued' AND cancel_requested=0 ORDER BY preview DESC, created_at LIMIT 1").fetchone()
+        # Chia lượt công bằng: bản thử trước; rồi người đang có ít job chạy nhất; rồi người được chạy lâu nhất trước đây;
+        # cuối cùng theo thời điểm tạo. Một người xếp nhiều job dài không chiếm GPU của người khác nhiều giờ liền.
+        j = c.execute("""SELECT j.* FROM jobs j WHERE j.status='queued' AND j.cancel_requested=0
+                         ORDER BY j.preview DESC,
+                                  (SELECT count(*) FROM jobs r WHERE r.owner=j.owner AND r.status='running') ASC,
+                                  coalesce((SELECT max(r.started_at) FROM jobs r WHERE r.owner=j.owner AND r.started_at IS NOT NULL), 0) ASC,
+                                  j.created_at ASC LIMIT 1""").fetchone()
         if not j:
             return None
         n = c.execute("""UPDATE jobs SET status='running', stage='queued', worker=?, attempts=attempts+1, started_at=?,
@@ -140,7 +146,10 @@ def run_job(job):
         if not video or video["deleted_at"] or not os.path.isfile(video["path"]):
             raise pipeline.JobError("no_input", "Video gốc đã bị xoá hoặc hết hạn")
         runner = pipeline.Runner(job, video, lambda **f: _update(jid, **f), lambda: _cancelled(jid), log)
-        with gpu.task(f"video:{jid[:8]}", "video",
+        caps = models.capabilities(wait=True)  # job tạo ngay sau khi Hub khởi động: chờ kiểm tra GPU xong ở đây
+        if not caps or not caps.get("ok"):
+            raise pipeline.JobError("not_ready", "Máy xử lý video chưa sẵn sàng: " + ((caps or {}).get("error") or "không nhận diện được GPU"))
+        with gpu.task(f"video:{jid[:8]}", "video", should_abort=lambda: _cancelled(jid),
                       on_wait=lambda n: _update(jid, stage="queued", message=f"Đang chờ GPU ({n} tác vụ khác phía trước)")):
             if _cancelled(jid):
                 raise pipeline.Cancelled()
@@ -148,7 +157,7 @@ def run_job(job):
         _finish(jid, "completed", stage="done", message="Hoàn tất", progress=100.0, eta_s=0, output_path=final,
                 output_size=os.path.getsize(final), output_json=db.dumps(out))
         log(f"Hoàn tất: {final} ({out['video']['width']}x{out['video']['height']} @ {out['video']['fps']} fps, {out['duration']}s)")
-    except pipeline.Cancelled:
+    except (pipeline.Cancelled, gpu.Aborted):
         _finish(jid, "cancelled", stage="cancelled", message="Đã huỷ theo yêu cầu")
         log("Đã huỷ")
     except pipeline.JobError as e:
@@ -203,10 +212,11 @@ def _alive_worker(worker):
 def cleanup():
     cfg = settings.get()
     now = db.now()
-    for v in db.all_("SELECT id, path FROM videos WHERE deleted_at IS NULL AND expires_at < ?", (now,)):
+    for v in db.all_("SELECT id, path, info_json FROM videos WHERE deleted_at IS NULL AND expires_at < ?", (now,)):
         if db.one("SELECT 1 FROM jobs WHERE video_id=? AND status IN ('queued','running')", (v["id"],)):
             continue
         _rm(v["path"])
+        _rm((db.loads(v["info_json"], {}) or {}).get("proxy_path"))  # bản xem trước H.264 (nếu có)
         db.run("UPDATE videos SET deleted_at=? WHERE id=?", (now, v["id"]))
     # Kết quả hết hạn: xoá file, giữ dòng job để người dùng vẫn thấy lịch sử ("đã hết hạn")
     for j in db.all_("SELECT id, output_path FROM jobs WHERE output_path IS NOT NULL AND expires_at IS NOT NULL AND expires_at < ?", (now,)):
