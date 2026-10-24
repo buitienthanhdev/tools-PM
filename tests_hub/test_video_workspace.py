@@ -410,3 +410,61 @@ def test_preview_proxy_recovers_after_restart_and_no_orphans(env, monkeypatch):
     r = _upload(a, env["clip"])
     assert r.status_code == 500 and r.json["code"] == "probe_failed"
     assert set(os.listdir(os.path.join(str(env["tmp"]), "video", "videos"))) == before
+
+
+@pytest.mark.parametrize("w,h,sar,rot", [(1920, 800, "1199:1200", 0), (640, 534, "2:1", 0), (1920, 800, "1199:1200", 90),
+                                          (640, 534, "2:1", 90), (1279, 535, "1:1", 0)])
+def test_normalized_size_matches_ffmpeg(env, w, h, sar, rot):
+    """Kích thước kế hoạch tính trước phải đúng bằng kích thước ffmpeg thật sự tạo ra (lỗi gặp khi thử tải: 3836 vs 3832)."""
+    from modules.video_workspace import pipeline, probe
+
+    ff = os.path.join(_ffdir(), "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+    src = env["tmp"] / f"s_{w}_{rot}.mp4"
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=s={w}x{h}:r=24:d=1",
+                    "-vf", f"setsar={sar.replace(':', '/')}", "-c:v", "libx264", "-pix_fmt", "yuv444p" if w % 2 or h % 2 else "yuv420p",
+                    str(env["tmp"] / "tmp.mp4")], check=True)
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-display_rotation", str(rot), "-i", str(env["tmp"] / "tmp.mp4"),
+                    "-c", "copy", str(src)], check=True)
+    info = probe.probe(str(src))
+    p = pipeline.plan(info, {"upscale": "openproteus-2x"})
+    job = {"id": "t" + str(w) + str(rot), "plan_json": None}
+    r = pipeline.Runner(job, {"path": str(src), "info_json": "{}"}, lambda **f: None, lambda: False, lambda m: None)
+    out = r._normalize(str(src), info, p)
+    got = probe.probe(out)["video"]
+    assert (got["width"], got["height"]) == (p["input"]["width"], p["input"]["height"]), (sar, rot)
+
+
+def test_target_fps_and_subtitles_kept(env):
+    """24 → đúng 60 fps (nội suy ×3 rồi đổi fps), giữ thời lượng; phụ đề SRT được giữ dưới dạng mov_text trong MP4."""
+    import json as _json
+
+    a = _user(env["app"], "a@x.com")
+    ff = os.path.join(_ffdir(), "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+    srt = env["tmp"] / "s.srt"
+    srt.write_text("1\n00:00:00,200 --> 00:00:01,500\nXin chào\n\n", encoding="utf-8")
+    mkv = env["tmp"] / "subs.mkv"
+    subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-i", str(env["clip"]), "-i", str(srt), "-map", "0", "-map", "1",
+                    "-c:v", "copy", "-c:a", "copy", "-c:s", "srt", str(mkv)], check=True)
+    vid = _upload(a, mkv).json["video"]["id"]
+
+    def plan(conf):
+        return a.post("/api/video/plan", json={"video_id": vid, "config": conf})
+
+    p = plan({"interpolate": "rife-4.26", "target_fps": 60}).json["plan"]
+    assert (p["factor"], p["resample"], p["output"]["fps"], p["subs_keep"]) == (3, True, 60.0, [0])
+    assert plan({"interpolate": "rife-4.26", "target_fps": 30}).json["plan"]["factor"] == 2
+    assert plan({"interpolate": "rife-4.26", "target_fps": 61}).json["code"] == "bad_target"
+    assert plan({"interpolate": "rife-4.26", "target_fps": 120}).json["code"] == "bad_target"  # cần ×5
+    assert plan({"interpolate": "rife-4.26", "target_fps": 60, "factor": 2}).json["code"] == "bad_option"
+    jid = a.post("/api/video/jobs", json={"video_id": vid, "config": {"interpolate": "rife-4.26", "target_fps": 60}}).json["job"]["id"]
+    _run_next()
+    j = a.get(f"/api/video/jobs/{jid}").json["job"]
+    assert j["status"] == "completed", j
+    assert j["output"]["video"]["fps"] == 60.0 and abs(j["output"]["duration"] - 2) < 0.2
+    from modules.video_workspace import db, settings
+
+    out = db.one("SELECT output_path FROM jobs WHERE id=?", (jid,))["output_path"]
+    r = subprocess.run([settings.ffprobe(), "-v", "error", "-show_entries", "stream=codec_type,codec_name", "-of", "json", out],
+                       capture_output=True, text=True)
+    st = {(s["codec_type"], s["codec_name"]) for s in _json.loads(r.stdout)["streams"]}
+    assert ("subtitle", "mov_text") in st and ("audio", "aac") in st

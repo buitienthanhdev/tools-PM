@@ -92,7 +92,7 @@ def status():
         "models": [{"id": k, "kind": m["kind"], "group": m.get("group"), "label": m["label"], "best_for": m["best_for"],
                     "scale": m.get("scale"), "license": m["license"], "noncommercial": m["noncommercial"],
                     "installed": models.is_ready(k), "downloadable": cfg["allow_model_download"]} for k, m in allowed.items()],
-        "factors": list(catalog.INTERPOLATE_FACTORS), "scene_detect": catalog.SCENE_DETECT,
+        "factors": list(catalog.INTERPOLATE_FACTORS), "target_fps": list(catalog.TARGET_FPS), "scene_detect": catalog.SCENE_DETECT,
         "presets": [p for p in catalog.PRESETS if all(x in allowed for x in [p.get("upscale"), p.get("interpolate"), *(p.get("restore") or [])] if x)]
         + [dict(p, upscale=p["fallback_upscale"]) for p in catalog.PRESETS
            if p.get("fallback_upscale") and p.get("upscale") not in allowed and p["fallback_upscale"] in allowed],
@@ -328,7 +328,7 @@ def _conf():
     c = d.get("config") or {}
     if not isinstance(c, dict):
         raise pipeline.JobError("bad_request", "Cấu hình không hợp lệ")
-    allowed_keys = {"upscale", "interpolate", "factor", "restore", "scene_detect", "preview"}
+    allowed_keys = {"upscale", "interpolate", "factor", "target_fps", "restore", "scene_detect", "preview"}
     if set(c) - allowed_keys:
         raise pipeline.JobError("bad_request", "Cấu hình có tham số không được hỗ trợ: " + ", ".join(sorted(set(c) - allowed_keys)))
     return str(d.get("video_id") or ""), c

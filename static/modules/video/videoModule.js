@@ -294,8 +294,10 @@ export const videoModule = {
           <small class="dim" id="f-up-note">${esc(up.find((m) => m.id === c.upscale)?.best_for || 'Hệ số do model quyết định (2× hoặc 4×)')}</small></fieldset>
         <fieldset><legend>Nội suy khung hình (làm mượt)</legend>
           <div class="vw-inline"><select id="f-it"><option value="">Không nội suy</option>${it.map(opt).join('')}</select>
-          <select id="f-fac" ${c.interpolate ? '' : 'disabled'}>${st.factors.map((f) => `<option value="${f}" ${c.factor === f ? 'selected' : ''}>×${f}${s.cur.info.video.fps ? ` → ${(s.cur.info.video.fps * f).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} fps` : ''}</option>`).join('')}</select></div>
-          <small class="dim">Chỉ hệ số nguyên: thời lượng giữ nguyên, không thành slow-motion</small>
+          <select id="f-fac" ${c.interpolate ? '' : 'disabled'}>${st.factors.map((f) => `<option value="${f}" ${!c.target && c.factor === f ? 'selected' : ''}>×${f}${s.cur.info.video.fps ? ` → ${(s.cur.info.video.fps * f).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} fps` : ''}</option>`).join('')}
+            ${(st.target_fps || []).filter((t) => t > (s.cur.info.video.fps || 0) * 1.01 && t <= (s.cur.info.video.fps || 0) * Math.max(...st.factors) + 0.01 && !st.factors.some((f) => Math.abs((s.cur.info.video.fps || 0) * f - t) < 0.01))
+              .map((t) => `<option value="t${t}" ${c.target === t ? 'selected' : ''}>→ đúng ${t} fps</option>`).join('')}</select></div>
+          <small class="dim">Thời lượng luôn giữ nguyên, không thành slow-motion</small>
           <label class="vw-lbl">Phát hiện chuyển cảnh <select id="f-sd" ${c.interpolate ? '' : 'disabled'}>${Object.entries(st.scene_detect).map(([k, l]) => `<option value="${k}" ${c.scene_detect === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label></fieldset>
         <fieldset><legend>Phục hồi (trước khi tăng độ phân giải)</legend>
           ${groups.map((g) => `<label class="vw-lbl">${esc(GROUPS[g] || g)} <select data-g="${g}"><option value="">Không</option>${rs.filter((m) => m.group === g).map((m) => `<option value="${m.id}" ${c.restore.includes(m.id) ? 'selected' : ''}>${esc(m.label)}${m.installed ? '' : ' · tải lần đầu'}</option>`).join('')}</select></label>`).join('')}
@@ -309,13 +311,13 @@ export const videoModule = {
     const set = (patch) => { Object.assign(c, patch); s.preset = null; this.renderForm(); };
     box.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => {
       const p = st.presets.find((x) => x.id === b.dataset.p);
-      Object.assign(c, { upscale: p.upscale || null, interpolate: p.interpolate || null, factor: p.factor || 2, restore: [...(p.restore || [])] });
+      Object.assign(c, { upscale: p.upscale || null, interpolate: p.interpolate || null, factor: p.factor || 2, target: null, restore: [...(p.restore || [])] });
       s.preset = p.id;
       this.renderForm();
     }));
     box.querySelector('#f-up').onchange = (e) => set({ upscale: e.target.value || null });
     box.querySelector('#f-it').onchange = (e) => set({ interpolate: e.target.value || null });
-    box.querySelector('#f-fac').onchange = (e) => set({ factor: Number(e.target.value) });
+    box.querySelector('#f-fac').onchange = (e) => (e.target.value.startsWith('t') ? set({ target: Number(e.target.value.slice(1)) }) : set({ factor: Number(e.target.value), target: null }));
     box.querySelector('#f-sd').onchange = (e) => set({ scene_detect: e.target.value });
     box.querySelectorAll('[data-g]').forEach((sel) => (sel.onchange = () => {
       const g = sel.dataset.g;
@@ -333,7 +335,7 @@ export const videoModule = {
     const c = s.conf;
     const out = { restore: c.restore };
     if (c.upscale) out.upscale = c.upscale;
-    if (c.interpolate) Object.assign(out, { interpolate: c.interpolate, factor: c.factor, scene_detect: c.scene_detect });
+    if (c.interpolate) Object.assign(out, { interpolate: c.interpolate, scene_detect: c.scene_detect }, c.target ? { target_fps: c.target } : { factor: c.factor });
     if (preview) out.preview = { start: Number(s.el.querySelector('#f-start')?.value || 0) };
     return out;
   },
@@ -356,7 +358,7 @@ export const videoModule = {
       if (!this.s || s.planKey !== key) return;
       const o = plan.output;
       const name = (id) => s.status.models.find((m) => m.id === id)?.label || id;
-      const steps = [...plan.restore.map(name), plan.interpolate ? `${name(plan.interpolate)} ×${plan.factor}` : null, plan.upscale ? name(plan.upscale) : null].filter(Boolean);
+      const steps = [...plan.restore.map(name), plan.interpolate ? `${name(plan.interpolate)} ×${plan.factor}${plan.resample ? ` → ${plan.target_fps} fps` : ''}` : null, plan.upscale ? name(plan.upscale) : null].filter(Boolean);
       box.innerHTML = `<div class="vw-plan-grid">
           <div><small>Đầu vào</small><b>${res(plan.input.width, plan.input.height)}</b><span>${fps(plan.input.fps)}</span></div>
           <div class="arrow">→</div>

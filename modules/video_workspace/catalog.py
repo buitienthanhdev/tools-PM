@@ -77,6 +77,10 @@ MODELS = {
 # Hệ số nội suy: chỉ số nguyên. RVE làm tròn lên số khung hình nhưng giữ fps = fps × hệ số, nên hệ số lẻ (2.5)
 # sẽ làm video dài ra (slow motion ngoài ý muốn) — không cho chọn.
 INTERPOLATE_FACTORS = (2, 3, 4)
+# fps đích không phải bội số nguyên (24 → 60): nội suy với hệ số nguyên nhỏ nhất vượt fps đích rồi ffmpeg đổi về đúng fps đích
+TARGET_FPS = (30, 50, 60, 120)
+# Phụ đề dạng chữ chuyển được sang mov_text (MP4); phụ đề ảnh (PGS/DVD) thì không
+TEXT_SUBS = {"subrip", "srt", "ass", "ssa", "mov_text", "webvtt", "text"}
 # "pyscenedetect" (mặc định của RVE) lỗi khi có model phục hồi 1x trước nội suy (cv2.resize nhận khung hình float16)
 # ở commit đang dùng → khi kết hợp, tự chuyển sang "mean". "none" = tắt.
 SCENE_DETECT = {"pyscenedetect": "PySceneDetect (khuyên dùng)", "mean": "So sánh độ sáng trung bình", "none": "Tắt"}

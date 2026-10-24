@@ -130,6 +130,7 @@ def probe(path):
                    "sample_rate": int(a.get("sample_rate") or 0) or None, "bitrate": int(a.get("bit_rate") or 0) or None,
                    "browser_ok": a.get("codec_name") in BROWSER_AUDIO, "count": len(audio)} if a else None),
         "subtitles": len(subs),
+        "subtitle_codecs": [s.get("codec_name") for s in subs],
     }
 
 

@@ -49,6 +49,23 @@ def std_fps(fps):
     return Fraction(fps).limit_denominator(1001)
 
 
+def normalized_size(v):
+    """Kích thước khung sau bước chuẩn hoá — PHẢI khớp đúng bộ lọc ffmpeg trong Runner._normalize:
+    ffmpeg xoay khung trước (SAR đảo khi xoay 90/270), rồi scale=trunc(iw*sar/2)*2:ih, rồi làm chẵn trunc(x/2)*2."""
+    w, h = v["width"], v["height"]
+    try:
+        sar = Fraction(str(v.get("sar") or "1:1").replace(":", "/"))
+    except (ValueError, ZeroDivisionError):
+        sar = Fraction(1)
+    if sar <= 0:
+        sar = Fraction(1)
+    if v.get("rotation") in (90, 270):
+        w, h, sar = h, w, 1 / sar
+    if sar != 1:
+        w = int(float(w) * float(sar) / 2) * 2  # cùng phép tính dấu phẩy động với biểu thức của ffmpeg
+    return w // 2 * 2, h // 2 * 2
+
+
 def plan(info, conf, cfg=None):
     """Kiểm tra cấu hình theo danh mục + giới hạn, tính thông số đầu ra. Raise JobError nếu không hợp lệ."""
     cfg = cfg or settings.get()
@@ -66,10 +83,18 @@ def plan(info, conf, cfg=None):
         raise JobError("bad_model", "Model phục hồi không hợp lệ (tối đa 2, không trùng)")
     if len({allowed[r]["group"] for r in rs}) != len(rs):
         raise JobError("bad_model", "Chỉ chọn một model cho mỗi loại phục hồi")
-    raw = conf.get("factor") if it else 1
+    target = conf.get("target_fps") if it else None
+    if target is not None:
+        if not isinstance(target, int) or isinstance(target, bool) or target not in catalog.TARGET_FPS:
+            raise JobError("bad_target", f"fps đích phải là {', '.join(map(str, catalog.TARGET_FPS))}")
+        if conf.get("factor") is not None:
+            raise JobError("bad_option", "Chọn hệ số nội suy HOẶC fps đích, không chọn cả hai")
+        raw = None
+    else:
+        raw = conf.get("factor") if it else 1
     # Không làm tròn ngầm (2.5 → 2 là sai ý người dùng): chỉ nhận đúng số nguyên trong danh sách
     factor = raw if isinstance(raw, int) and not isinstance(raw, bool) else -1
-    if it and factor not in catalog.INTERPOLATE_FACTORS:
+    if it and target is None and factor not in catalog.INTERPOLATE_FACTORS:
         raise JobError("bad_factor", f"Hệ số nội suy phải là {', '.join(map(str, catalog.INTERPOLATE_FACTORS))}")
     if not (up or it or rs):
         raise JobError("nothing", "Chưa chọn thao tác nào")
@@ -92,8 +117,7 @@ def plan(info, conf, cfg=None):
         duration = end - start
     if info["duration"] > cfg["max_duration_s"]:
         raise JobError("too_long", f"Video dài {info['duration']:.0f}s vượt giới hạn {cfg['max_duration_s']}s")
-    # Kích thước sau chuẩn hoá (xoay, SAR) — làm tròn chẵn
-    w, h = v["display_width"] - v["display_width"] % 2, v["display_height"] - v["display_height"] % 2
+    w, h = normalized_size(v)
     if w * h > cfg["max_input_pixels"]:
         raise JobError("too_large", f"Độ phân giải đầu vào {w}×{h} vượt giới hạn")
     scale = catalog.MODELS[up]["scale"] if up else 1
@@ -103,13 +127,32 @@ def plan(info, conf, cfg=None):
         raise JobError("output_too_large", f"Đầu ra {ow}×{oh} vượt giới hạn {lim // 1_000_000} megapixel — chọn model hệ số nhỏ hơn "
                                             f"hoặc video độ phân giải thấp hơn")
     fps_in = std_fps(v["fps"] or 30)
-    fps_out = fps_in * factor
+    resample = False
+    if target is not None:
+        if target <= float(fps_in) * 1.01:
+            raise JobError("bad_target", f"fps đích {target} phải lớn hơn fps gốc {float(fps_in):.3f}")
+        factor = next((f for f in catalog.INTERPOLATE_FACTORS if float(fps_in) * f >= target - 0.01), None)
+        if factor is None:
+            raise JobError("bad_target", f"Từ {float(fps_in):.3f} fps không lên được {target} fps (tối đa ×{max(catalog.INTERPOLATE_FACTORS)})")
+        resample = abs(float(fps_in) * factor - target) > 0.01
+        fps_out = Fraction(target) if resample else fps_in * factor
+        if resample:
+            warnings.append(f"Nội suy ×{factor} ({float(fps_in) * factor:.3f} fps) rồi đổi về đúng {target} fps — "
+                            "một số khung nội suy bị bỏ, chuyển động có thể không đều bằng hệ số nguyên")
+    else:
+        fps_out = fps_in * factor
     if float(fps_out) > cfg["max_output_fps"]:
         raise JobError("fps_too_high", f"fps đầu ra {float(fps_out):.2f} vượt giới hạn {cfg['max_output_fps']}")
     reasons = probe.needs_normalize(info, start, end)
+    codecs = info.get("subtitle_codecs") or []
+    subs_keep = [i for i, c in enumerate(codecs) if c in catalog.TEXT_SUBS]
     if info["subtitles"]:
-        reasons.append("bỏ phụ đề")
-        warnings.append(f"Video có {info['subtitles']} luồng phụ đề — MP4 đầu ra không giữ phụ đề")
+        reasons.append("tách phụ đề (ghép lại ở bước cuối)")
+        dropped = [c for c in codecs if c not in catalog.TEXT_SUBS]
+        if subs_keep:
+            warnings.append(f"Giữ {len(subs_keep)} phụ đề dạng chữ (chuyển sang mov_text trong MP4)")
+        if dropped:
+            warnings.append(f"Bỏ {len(dropped)} phụ đề dạng ảnh ({', '.join(sorted(set(dropped)))}) — MP4 không chứa được loại này")
     a = info["audio"]
     audio = "none"
     if a:
@@ -132,7 +175,8 @@ def plan(info, conf, cfg=None):
         warnings.append(f"fps đầu ra {float(fps_out):.0f} — nhiều màn hình/trình duyệt chỉ hiển thị tối đa 60–144 fps")
     frames = round(duration * float(fps_out))
     return {
-        "upscale": up, "interpolate": it, "factor": factor, "restore": rs, "scene_detect": sd if it else None,
+        "upscale": up, "interpolate": it, "factor": factor, "target_fps": target, "resample": resample, "subs_keep": subs_keep,
+        "restore": rs, "scene_detect": sd if it else None,
         "start": start, "end": end, "duration": round(duration, 3),
         "input": {"width": w, "height": h, "fps": float(fps_in), "fps_fraction": f"{fps_in.numerator}/{fps_in.denominator}"},
         "output": {"width": ow, "height": oh, "fps": round(float(fps_out), 3), "frames": frames,
@@ -214,9 +258,12 @@ class Runner:
 
     def _mux(self, video, src, out, p, info):
         self.update(stage="encoding", message="Ghép âm thanh gốc", progress=99.0, eta_s=None)
-        if p["output"]["audio"] == "none":
+        subs = p.get("subs_keep") or []
+        if p["output"]["audio"] == "none" and not subs and not p.get("resample"):
             os.replace(video, out)
             return
+        if p.get("resample"):
+            self.update(message=f"Đổi về đúng {p['target_fps']} fps")
         # Căn theo thời điểm KHUNG GIẢI MÃ ĐẦU TIÊN (đã áp edit list), không theo start_time của luồng: khi RVE tự ghép
         # âm thanh AAC, -avoid_negative_ts đẩy luồng hình đi một khoảng bằng priming (~21 ms). Đích: hình − tiếng như file gốc
         # (bản thử: khung đầu ↔ mẫu âm thanh tại điểm cắt). Đã kiểm chứng bằng video chớp sáng + tiếng bíp.
@@ -235,8 +282,22 @@ class Runner:
         args += ["-i", video]
         if trim:
             args += ["-ss", f"{p['start']:.3f}", "-t", f"{p['duration']:.3f}"]
-        args += ["-i", src, "-map", "0:v:0", "-map", "1:a", "-c:v", "copy"]
-        if p["output"]["audio"] == "copy" and not trim:
+        args += ["-i", src, "-map", "0:v:0"]
+        if p["output"]["audio"] != "none":
+            args += ["-map", "1:a"]
+        for i in subs:
+            args += ["-map", f"1:s:{i}"]
+        if p.get("resample"):  # đổi fps → phải mã lại hình
+            args += ["-vf", f"fps={p['target_fps']}", "-crf", str(int(self.cfg["crf"]))]
+            args += (["-c:v", "libx265", "-pix_fmt", "yuv420p10le", "-tag:v", "hvc1"] if p["hdr"]
+                     else ["-c:v", "libx264", "-pix_fmt", "yuv420p"])
+        else:
+            args += ["-c:v", "copy"]
+        if subs:
+            args += ["-c:s", "mov_text"]
+        if p["output"]["audio"] == "none":
+            pass
+        elif p["output"]["audio"] == "copy" and not trim:
             args += ["-c:a", "copy"]
         else:  # mã lại: âm thanh không phát được trên trình duyệt, hoặc bản thử (cắt chính xác tới mẫu)
             args += ["-c:a", "aac", "-b:a", "192k"]
