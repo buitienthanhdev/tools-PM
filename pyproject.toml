@@ -14,7 +14,7 @@ packages = []
 
 [tool.ruff]
 line-length = 100
-extend-exclude = ["modules/spacet", "node_modules", "notebooks"]
+extend-exclude = ["modules/spacet", "node_modules", "notebooks", "modules/video_workspace/vendor"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]

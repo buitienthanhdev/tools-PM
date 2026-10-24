@@ -43,6 +43,9 @@ data/meanwhile.json
 data/accounting/
 # Nhật ký truy cập cho dashboard quản trị (IP, email, hành vi người dùng)
 data/analytics/
+# Video Workspace: video người dùng, kết quả, file tạm, log; mã nguồn upstream tải bằng scripts/setup_video_workspace.py
+data/video/
+modules/video_workspace/vendor/
 bin/
 .gev-cache/
 .gev-logs/

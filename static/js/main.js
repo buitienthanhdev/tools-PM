@@ -22,6 +22,7 @@ import { legalModule } from '../modules/legal/legalModule.js';
 import { spacetModule } from '../modules/spacet/spacetModule.js';
 import { reviewingcvModule } from '../modules/reviewingcv/reviewingcvModule.js';
 import { accountingModule } from '../modules/accounting/accountingModule.js';
+import { videoModule } from '../modules/video/videoModule.js';
 import { authModule } from '../modules/auth/authModule.js';
 import { adminModule } from '../modules/auth/adminModule.js';
 import { authStore } from '../stores/authStore.js';
@@ -50,6 +51,8 @@ async function boot() {
 
   // Kế toán AI chỉ xuất hiện khi máy chủ đã bật module (features.accounting)
   if (authStore.features.accounting) moduleRegistry.register(accountingModule);
+  // Video Workspace chỉ xuất hiện khi máy chủ đã bật module (features.video)
+  if (authStore.features.video) moduleRegistry.register(videoModule);
 
   // 3. Render layout shell
   const sidebarMount   = document.getElementById('sidebarMount');

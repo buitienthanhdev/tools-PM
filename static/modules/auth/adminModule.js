@@ -10,7 +10,7 @@ const toast = (message, type = 'info') => eventBus.emit('toast:show', { message,
 
 const MODULE_NAMES = {
   whisper: 'Whisper', voxcpm: 'VoxCPM', image: 'Nét Ảnh', genreport: 'Báo cáo', legal: 'Pháp luật', spacet: 'SpaceT', reviewingcv: 'Reviewing CV',
-  accounting: 'Kế toán AI', auth: 'Đăng nhập / tài khoản', admin: 'Quản trị', jobs: 'Tác vụ nền', export: 'Xuất file', uploads: 'File tải lên',
+  accounting: 'Kế toán AI', video: 'Video Workspace', auth: 'Đăng nhập / tài khoản', admin: 'Quản trị', jobs: 'Tác vụ nền', export: 'Xuất file', uploads: 'File tải lên',
   catalog: 'Trang chủ', page: 'Trang khác', other: 'Khác',
 };
 const EVENT_NAMES = {

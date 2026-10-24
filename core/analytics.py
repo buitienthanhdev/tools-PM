@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 STATIC_EXT = re.compile(r"\.(js|mjs|css|map|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|mp4|webm|json|txt)$", re.I)
 # GET thăm dò định kỳ: chỉ ghi khi lỗi
 POLL = re.compile(r"^/api/(health|gpu/status|jobs?/[^/]+$|job/|accounting/o/[^/]+/(tasks/[^/]+$|review-count|overview)|"
-                  r"admin/analytics/live|track/)")
+                  r"video/(jobs|status|videos)$|video/jobs/[^/]+$|admin/analytics/live|track/)")
 # Đường dẫn máy quét lỗ hổng hay thử (SPA trả 200 cho mọi đường dẫn lạ nên phải nhận diện theo mẫu)
 SCAN = re.compile(r"\.(php\d?|aspx?|jsp|cgi|env|git|svn|bak|sql|ini|log|yml|yaml|config)(/|$)|/wp-|/wordpress|phpmyadmin|/\.|"
                   r"/(cgi-bin|vendor|actuator|console|server-status|xmlrpc|boaform|HNAP1|owa|autodiscover)", re.I)
@@ -73,12 +73,12 @@ ID_SEG = re.compile(r"^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]
                     r"[A-Za-z0-9_-]{22,})(\.\w+)?$")
 MODULE_PREFIX = [
     ("/api/transcribe", "whisper"), ("/api/voxcpm", "voxcpm"), ("/api/image", "image"), ("/api/genreport", "genreport"),
-    ("/api/legal", "legal"), ("/api/cv", "reviewingcv"), ("/api/accounting", "accounting"), ("/api/auth", "auth"),
+    ("/api/legal", "legal"), ("/api/cv", "reviewingcv"), ("/api/accounting", "accounting"), ("/api/video", "video"), ("/api/auth", "auth"),
     ("/api/admin", "admin"), ("/api/job", "jobs"), ("/api/export", "export"), ("/uploads", "uploads"),
 ]
 PAGE_MODULE = {"/whisper": "whisper", "/voxcpm": "voxcpm", "/image": "image", "/genreport": "genreport", "/legal": "legal",
                "/spacet": "spacet", "/reviewingcv": "reviewingcv", "/accounting": "accounting", "/admin": "admin",
-               "/login": "auth", "/": "catalog"}
+               "/video": "video", "/login": "auth", "/": "catalog"}
 
 
 # ── Lưu trữ ──────────────────────────────────────────────────

@@ -1,0 +1,143 @@
+/* Video Workspace — theo khuôn mp-panel của Hub; màu theo token theme (tối mặc định, sáng khi [data-theme="light"]). */
+.vw { --vw-ok: #34d399; --vw-warn: #fbbf24; --vw-bad: #f87171; --vw-run: #7fb2f0; }
+[data-theme="light"] .vw { --vw-ok: #047857; --vw-warn: #8a5a00; --vw-bad: #b42318; --vw-run: #1c5cab; }
+
+.vw .dim { color: var(--text-dim); }
+.vw-sub { color: var(--text-dim); font-size: 12px; }
+.vw-empty { color: var(--text-dim); font-size: 14px; padding: 36px 12px; text-align: center; }
+.vw-empty.sm { padding: 14px 4px; font-size: 13px; }
+.vw-note { border: 1px solid var(--border-color); background: var(--bg-card); border-radius: var(--radius-lg); padding: 12px 16px; margin-bottom: 18px; font-size: 13.5px; color: var(--text-muted); }
+.vw-note.bad { border-color: rgba(248, 113, 113, .4); }
+.vw-err { color: var(--vw-bad); font-size: 13px; margin-top: 8px; }
+.vw-warn { color: var(--vw-warn); font-size: 12.5px; margin-top: 6px; }
+.vw-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+
+.vw-top { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 24px; margin-bottom: 24px; }
+.vw-top > .mp-panel { margin: 0; min-width: 0; }
+
+/* Thư viện + tải lên */
+.vw-drop { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; padding: 22px 14px; border: 1.5px dashed var(--border-focus);
+  border-radius: var(--radius-lg); cursor: pointer; color: var(--text-muted); transition: var(--transition-fast); }
+.vw-drop:hover, .vw-drop.on, .vw-drop:focus-visible { border-color: var(--primary); background: var(--primary-light); color: var(--text-main); outline: none; }
+.vw-drop b { color: var(--text-main); font-size: 14px; margin-top: 4px; }
+.vw-drop span { font-size: 12.5px; }
+.vw-drop small { font-size: 11.5px; color: var(--text-dim); margin-top: 4px; }
+.vw-upload { margin-top: 12px; font-size: 12.5px; color: var(--text-muted); }
+.vw-up-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.vw-up-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); }
+.vw-bar { height: 6px; border-radius: 4px; background: var(--bg-elevated); overflow: hidden; margin: 8px 0 4px; }
+.vw-bar > div { height: 100%; background: var(--primary); border-radius: 4px; transition: width .4s; }
+.vw-bar.ind > div { width: 35%; animation: vw-ind 1.4s ease-in-out infinite; }
+@keyframes vw-ind { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+.vw-list { display: grid; gap: 6px; margin-top: 14px; max-height: 360px; overflow: auto; }
+.vw-item { text-align: left; border: 1px solid var(--border-color); background: transparent; border-radius: var(--radius-md); padding: 9px 11px; cursor: pointer;
+  display: grid; gap: 2px; color: var(--text-muted); font: inherit; min-width: 0; }
+.vw-item b { color: var(--text-main); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.vw-item small { font-size: 11.5px; }
+.vw-item:hover { border-color: var(--border-focus); }
+.vw-item.on { border-color: var(--border-accent); background: var(--primary-light); }
+.vw-usage { font-size: 11.5px; color: var(--text-dim); margin-top: 12px; }
+
+/* Trình phát + thông tin */
+.vw-player { position: relative; background: #000; border-radius: var(--radius-lg); overflow: hidden; min-height: 220px; display: flex; align-items: center; justify-content: center; }
+.vw-player video { width: 100%; max-height: 62vh; display: block; background: #000; }
+.vw-player .vw-empty { color: rgba(255, 255, 255, .55); }
+.vw-tag { position: absolute; left: 10px; top: 10px; font-size: 11px; background: rgba(0, 0, 0, .6); color: #fff; padding: 3px 8px; border-radius: 9px; }
+.vw-kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 14px 0 0; font-size: 13px; }
+.vw-kv dt { color: var(--text-dim); }
+.vw-kv dd { margin: 0; color: var(--text-main); overflow-wrap: anywhere; }
+.vw-chip { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 9px; border: 1px solid var(--border-color); color: var(--text-muted); white-space: nowrap; vertical-align: 1px; }
+.vw-chip.ok { color: var(--vw-ok); border-color: color-mix(in srgb, var(--vw-ok) 40%, transparent); }
+.vw-chip.warn { color: var(--vw-warn); border-color: color-mix(in srgb, var(--vw-warn) 40%, transparent); }
+.vw-chip.bad { color: var(--vw-bad); border-color: color-mix(in srgb, var(--vw-bad) 40%, transparent); }
+.vw-chip.run { color: var(--vw-run); border-color: color-mix(in srgb, var(--vw-run) 40%, transparent); }
+
+/* Thông số */
+.vw-settings { margin-bottom: 24px; }
+.vw-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr)); gap: 8px; margin-bottom: 18px; }
+.vw-preset { text-align: left; border: 1px solid var(--border-color); background: var(--bg-input); border-radius: var(--radius-md); padding: 10px 12px; cursor: pointer;
+  display: grid; gap: 3px; font: inherit; color: var(--text-muted); }
+.vw-preset b { color: var(--text-main); font-size: 13px; }
+.vw-preset small { font-size: 11.5px; line-height: 1.35; }
+.vw-preset:hover { border-color: var(--border-focus); }
+.vw-preset.on { border-color: var(--primary); background: var(--primary-light); }
+.vw-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.vw-form fieldset { border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px 14px; margin: 0; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.vw-form legend { padding: 0 6px; font-size: 12.5px; color: var(--text-muted); font-weight: 600; }
+.vw select, .vw input[type="number"] { background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-main); border-radius: var(--radius-sm);
+  padding: 7px 9px; font: inherit; font-size: 13px; min-width: 0; max-width: 100%; }
+.vw select { width: 100%; }
+.vw select:disabled { opacity: .5; }
+.vw input[type="number"] { width: 84px; }
+.vw-inline { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.vw-inline select:last-child { width: auto; }
+.vw-lbl { display: grid; gap: 5px; font-size: 12px; color: var(--text-muted); }
+.vw-form small { font-size: 11.5px; line-height: 1.4; }
+.vw-plan { margin-top: 16px; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px 16px; background: var(--bg-input); }
+.vw-plan-grid { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: center; }
+.vw-plan-grid > div { display: grid; gap: 1px; }
+.vw-plan-grid small { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.vw-plan-grid b { color: var(--text-main); font-size: 16px; font-variant-numeric: tabular-nums; }
+.vw-plan-grid span { color: var(--text-muted); font-size: 12px; }
+.vw-plan-grid .arrow { color: var(--primary); font-size: 22px; }
+.vw-steps-txt { margin-top: 10px; font-size: 12.5px; color: var(--text-muted); }
+.vw-actions { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; }
+.vw-actions .vw-lbl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.vw-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Hàng đợi */
+.vw-jobs { display: grid; gap: 12px; }
+.vw-job { border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 14px 16px; background: var(--bg-input); min-width: 0; }
+.vw-job.running { border-color: color-mix(in srgb, var(--vw-run) 45%, transparent); }
+.vw-job.failed { border-color: color-mix(in srgb, var(--vw-bad) 40%, transparent); }
+.vw-job-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.vw-job-h b { color: var(--text-main); font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.vw-job-h small { margin-left: auto; font-size: 11.5px; }
+.vw-job-cfg { font-size: 12.5px; color: var(--text-muted); margin-top: 6px; overflow-wrap: anywhere; }
+.vw-job-cfg b { color: var(--text-main); }
+.vw-job small { font-size: 12px; color: var(--text-muted); }
+.vw-stages { display: flex; gap: 4px; list-style: none; padding: 0; margin: 12px 0 4px; counter-reset: st; }
+.vw-stages li { flex: 1; font-size: 11.5px; color: var(--text-dim); padding-top: 8px; border-top: 3px solid var(--bg-elevated); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vw-stages li.done { color: var(--text-muted); border-top-color: var(--vw-ok); }
+.vw-stages li.now { color: var(--text-main); border-top-color: var(--primary); font-weight: 600; }
+.vw-out { font-size: 12.5px; color: var(--text-muted); margin-top: 8px; }
+.vw-out b { color: var(--text-main); }
+.vw-job-a { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.vw-job-a a.btn { text-decoration: none; }
+.vw-danger { color: var(--vw-bad) !important; }
+
+/* So sánh trước/sau */
+.vw-cmp-host { margin-top: 14px; }
+.vw-cmp { position: relative; width: 100%; max-height: 72vh; background: #000; border-radius: var(--radius-md); overflow: hidden; --x: 50%; }
+.vw-cmp video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.vw-cmp video.before { z-index: 1; }
+.vw-cmp::after { content: ""; position: absolute; top: 0; bottom: 0; left: var(--x); width: 2px; background: #fff; box-shadow: 0 0 6px rgba(0, 0, 0, .7); z-index: 2; pointer-events: none; }
+.vw-cmp-line { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; z-index: 3; pointer-events: none; }
+.vw-cmp-line span { font-size: 11px; background: rgba(0, 0, 0, .6); color: #fff; padding: 3px 8px; border-radius: 9px; }
+.vw-cmp-split { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; z-index: 4; }
+.vw-cmp-bar { display: flex; align-items: center; gap: 10px; margin: 10px 0 6px; flex-wrap: wrap; }
+.vw-cmp-seek { flex: 1; min-width: 140px; accent-color: var(--primary); }
+.vw-cmp-t { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.vw-legal { font-size: 11.5px; color: var(--text-dim); margin: 18px 4px 0; line-height: 1.6; }
+.vw-legal a { color: var(--text-muted); }
+.vw-legal code { font-size: 11px; }
+
+@media (max-width: 1100px) {
+  .vw-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .vw-top { grid-template-columns: minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+  .vw-list { max-height: 220px; }
+}
+@media (max-width: 640px) {
+  .vw-form { grid-template-columns: minmax(0, 1fr); }
+  .vw-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vw-stages li { font-size: 10px; }
+  .vw-actions { flex-direction: column; align-items: stretch; }
+  .vw-btns .btn { flex: 1; }
+  .vw-plan-grid { gap: 8px 18px; }
+  .vw-plan-grid b { font-size: 14px; }
+  .vw-kv { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .vw-kv dt { margin-top: 6px; }
+}

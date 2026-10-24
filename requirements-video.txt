@@ -1,0 +1,17 @@
+# Môi trường RIÊNG cho Video Workspace (venvs/video) — không cài vào venv của Hub.
+# Đã kiểm thử trên RTX 5090 (sm_120) với driver 617.42. Cài: scripts/setup_video_workspace.py
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.14.1+cu130
+torchvision==0.29.1+cu130
+numpy==2.5.2
+opencv-python-headless==5.0.0.93
+scenedetect==0.7.2
+einops==0.8.2
+safetensors==0.8.0
+requests==2.34.2
+tqdm==4.70.1
+packaging==26.3
+pillow==12.3.0
+sympy==1.14.0
+typing_extensions==4.16.0
+mpmath==1.3.0

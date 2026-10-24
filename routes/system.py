@@ -57,6 +57,14 @@ def _tools_health():
         from modules.accounting import health as accounting_health
 
         out["accounting"] = accounting_health.status()
+    if current_app.config.get("FEATURES", {}).get("video"):
+        from modules.video_workspace import models as video_models
+
+        caps = video_models.capabilities() or {}
+        probs = video_models.env_problems() + ([caps["error"]] if caps.get("error") else [])
+        out["video"] = {"ok": bool(caps.get("ok")) and not probs,
+                        "detail": "; ".join(probs) if probs else (f"RVE PyTorch {caps.get('torch')} · {', '.join(caps.get('gpus') or [])}"
+                                                                  if caps else "đang kiểm tra GPU…")}
     return out
 
 
@@ -107,7 +115,8 @@ def api_health():
                     "spacet",
                     "reviewingcv",
                 ]
-                + (["accounting"] if current_app.config.get("FEATURES", {}).get("accounting") else []),
+                + (["accounting"] if current_app.config.get("FEATURES", {}).get("accounting") else [])
+                + (["video"] if current_app.config.get("FEATURES", {}).get("video") else []),
             }
         )
     except Exception as e:

@@ -20,9 +20,9 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import analytics, config
 
-MODULES = ["whisper", "voxcpm", "image", "genreport", "legal", "spacet", "reviewingcv", "accounting"]
+MODULES = ["whisper", "voxcpm", "image", "genreport", "legal", "spacet", "reviewingcv", "accounting", "video"]
 # Công cụ xử lý dữ liệu nhạy cảm: không tự cấp khi auto_approve, admin phải cấp riêng
-SENSITIVE_MODULES = {"accounting"}
+SENSITIVE_MODULES = {"accounting", "video"}  # không tự cấp khi đăng ký (video chiếm GPU nhiều giờ)
 USERS_PATH = os.path.join(config.DATA_DIR, "users.json")
 SECRET_PATH = os.path.join(config.DATA_DIR, "secret.key")
 SETUP_CODE_PATH = os.path.join(config.DATA_DIR, "admin_setup_code.txt")
@@ -157,6 +157,7 @@ _PREFIX_MODULE = [
     ("/api/legal", "legal"),
     ("/api/cv", "reviewingcv"),
     ("/api/accounting", "accounting"),
+    ("/api/video", "video"),
 ]
 _PUBLIC = ("/api/auth/", "/api/health", "/api/track/")  # track: beacon lượt xem/lỗi trình duyệt (giới hạn tốc độ)
 

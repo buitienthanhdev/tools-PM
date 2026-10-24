@@ -99,12 +99,20 @@ for _bp in (
 
 # Accounting AI (/accounting): chỉ gắn khi được bật (data/config.json "accounting.enabled" hoặc PM_ACCOUNTING=1)
 from modules.accounting import settings as accounting_settings  # noqa: E402
+from modules.video_workspace import settings as video_settings  # noqa: E402
 
-app.config["FEATURES"] = {"accounting": bool(accounting_settings.get()["enabled"])}
+app.config["FEATURES"] = {"accounting": bool(accounting_settings.get()["enabled"]),
+                          "video": bool(video_settings.get()["enabled"])}
 if app.config["FEATURES"]["accounting"]:
     from modules.accounting.api import init_app as accounting_init  # noqa: E402
 
     accounting_init(app)
+
+# Video Workspace (/video): backend REAL-Video-Enhancer chạy trong venv riêng, worker nền; bật bằng "video.enabled" / PM_VIDEO=1
+if app.config["FEATURES"]["video"]:
+    from modules.video_workspace.api import init_app as video_init  # noqa: E402
+
+    video_init(app)
 
 start_cleanup()
 
