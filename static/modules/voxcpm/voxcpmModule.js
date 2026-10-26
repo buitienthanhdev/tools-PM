@@ -112,8 +112,8 @@ export const voxcpmModule = {
   },
 
   _restoreLatestJob(el) {
+    // Luôn đăng ký nhận kết quả — kể cả lần dùng đầu tiên (chưa có tác vụ cũ nào)
     const latest = jobTracker.getLatestJobForModule('voxcpm');
-    if (!latest) return;
 
     const progWrap = el.querySelector('#vox-progress-wrap');
     const progBar  = el.querySelector('#vox-progress-bar');
@@ -121,9 +121,9 @@ export const voxcpmModule = {
     const output   = el.querySelector('#vox-output');
     const btn      = el.querySelector('#vox-btn');
 
-    if (latest.status === 'completed' && latest.result) {
+    if (latest?.status === 'completed' && latest.result) {
       this._renderAudioResult(latest.result, output);
-    } else if (latest.status === 'queued' || latest.status === 'processing') {
+    } else if (latest?.status === 'queued' || latest?.status === 'processing') {
       this._state.busy = true;
       if (btn) btn.disabled = true;
       if (progWrap) progWrap.style.display = 'block';
@@ -131,8 +131,9 @@ export const voxcpmModule = {
       if (progMsg)  progMsg.textContent    = latest.message || 'Đang sinh giọng ngầm...';
     }
 
+    if (this._state.unsubscribe) this._state.unsubscribe();
     this._state.unsubscribe = jobTracker.subscribe(job => {
-      if (job.module !== 'voxcpm') return;
+      if (job?.module !== 'voxcpm') return;
 
       if (job.status === 'processing' || job.status === 'queued') {
         this._state.busy = true;

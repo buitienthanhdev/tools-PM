@@ -120,18 +120,18 @@ export const whisperModule = {
   },
 
   restoreLatestJob(containerEl) {
+    // Luôn đăng ký nhận kết quả — kể cả lần dùng đầu tiên (chưa có tác vụ cũ nào)
     const latest = jobTracker.getLatestJobForModule('whisper');
-    if (!latest) return;
 
     const progressArea = containerEl.querySelector('#progressArea');
     const progressBar = containerEl.querySelector('#progressBar');
     const progressText = containerEl.querySelector('#progressText');
     const resultText = containerEl.querySelector('#resultText');
 
-    if (latest.status === 'completed' && latest.result) {
+    if (latest?.status === 'completed' && latest.result) {
       this.state.resultData = latest.result;
       this.renderResult(latest.result, resultText);
-    } else if (latest.status === 'queued' || latest.status === 'processing') {
+    } else if (latest?.status === 'queued' || latest?.status === 'processing') {
       this.state.isProcessing = true;
       if (progressArea) progressArea.style.display = 'block';
       if (progressBar) progressBar.style.width = `${latest.progress || 10}%`;
@@ -139,8 +139,9 @@ export const whisperModule = {
     }
 
     // Subscribe to updates from jobTracker
+    if (this.state.unsubscribe) this.state.unsubscribe();
     this.state.unsubscribe = jobTracker.subscribe(job => {
-      if (job.module !== 'whisper') return;
+      if (job?.module !== 'whisper') return;
 
       if (job.status === 'processing' || job.status === 'queued') {
         if (progressArea) progressArea.style.display = 'block';

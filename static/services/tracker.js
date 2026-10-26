@@ -57,6 +57,8 @@ const reportError = (kind, msg, src, stack) => {
 window.addEventListener('error', (e) => {
   if (e.target && e.target !== window && (e.target.src || e.target.href)) {
     reportError('ResourceError', `Không tải được ${e.target.tagName?.toLowerCase()}`, e.target.src || e.target.href);
+  } else if (/^ResizeObserver loop/.test(e.message || '')) {
+    // Cảnh báo vô hại của trình duyệt (khung ảnh đổi kích thước), không phải lỗi — bỏ qua để bảng lỗi admin sạch
   } else reportError(e.error?.name || 'Error', e.message, `${e.filename}:${e.lineno}:${e.colno}`, e.error?.stack);
 }, true);
 window.addEventListener('unhandledrejection', (e) => {
