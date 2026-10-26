@@ -8,11 +8,6 @@
   <!-- Favicon -->
   <link rel="icon" type="image/webp" href="/assets/logo-sm.webp" />
 
-  <!-- Google Fonts — không chặn hiển thị: chữ hệ thống hiện ngay, font web thay vào khi tải xong -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
-
   <!-- Styles -->
   <link rel="stylesheet" href="/styles/theme.css" />
   <link rel="stylesheet" href="/styles/layout.css" />
@@ -45,7 +40,18 @@
       var n = navigator, c = n.hardwareConcurrency || 4, m = n.deviceMemory || 8;
       var slow = c <= 4 || m <= 4 || (n.connection && n.connection.saveData) ||
                  (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-      if (slow) document.documentElement.classList.add('lite');
+      if (slow) { document.documentElement.classList.add('lite'); return; }
+      // Máy thường: font tự host (không gọi Google). Máy lite: dùng font hệ thống, 0 byte font.
+      var h = document.head;
+      ['plus-jakarta-sans-latin', 'plus-jakarta-sans-vietnamese'].forEach(function (f) {
+        var l = document.createElement('link');
+        l.rel = 'preload'; l.as = 'font'; l.type = 'font/woff2'; l.crossOrigin = '';
+        l.href = '/fonts/' + f + '.woff2';
+        h.appendChild(l);
+      });
+      var css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = '/fonts/fonts.css';
+      h.appendChild(css);
     })();
   </script>
 </head>

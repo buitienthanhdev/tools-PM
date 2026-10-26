@@ -247,10 +247,7 @@ export const reviewingcvModule = {
       st.id = STYLE_ID;
       st.textContent = CSS;
       document.head.appendChild(st);
-      const font = document.createElement('link');
-      font.rel = 'stylesheet';
-      font.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap';
-      document.head.appendChild(font);
+      // Font Plus Jakarta Sans đã tự host trong index.html (/fonts/fonts.css)
     }
     document.body.classList.add('route-reviewingcv');
 

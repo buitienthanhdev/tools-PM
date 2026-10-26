@@ -12,6 +12,8 @@ import { authStore } from '../../stores/authStore.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const preview = (id) => `/assets/previews/${id}.webp`;
+// Máy yếu (class .lite do index.html đặt): bỏ bộ ảnh trang trí ở hero và phần nổi — không tải luôn
+const LITE = document.documentElement.classList.contains('lite');
 const num = (i) => String(i + 1).padStart(2, '0');
 
 const BAND = ['Chạy trên GPU riêng', 'Không cần cài đặt', 'Tự giám sát 24/7', 'Hỗ trợ tiếng Việt'];
@@ -54,7 +56,7 @@ export const catalogModule = {
 
       <header class="wfl-hero wfl-noise">
         <div class="wfl-iso" aria-hidden="true">
-          ${['voxcpm', 'spacet', 'whisper', 'reviewingcv', 'genreport', 'image'].filter((id) => ids.includes(id)).map((id) => `<img src="${preview(id)}" alt="" loading="eager" />`).join('')}
+          ${(LITE ? [] : ['voxcpm', 'spacet', 'whisper', 'reviewingcv', 'genreport', 'image']).filter((id) => ids.includes(id)).map((id) => `<img src="${preview(id)}" alt="" loading="eager" />`).join('')}
         </div>
         <div class="wfl-container wfl-hero-c">
           <h1>Bộ công cụ <span class="thin">AI Workspace</span> mạnh mẽ nhất đã sẵn sàng</h1>
@@ -116,7 +118,7 @@ export const catalogModule = {
       </section>
 
       <section class="wfl-cta wfl-noise">
-        ${['image', 'voxcpm', 'whisper', 'genreport', 'reviewingcv', 'legal'].filter((id) => ids.includes(id)).map((id, i) => `<img class="wfl-float f${i + 1}" src="${preview(id)}" alt="" loading="lazy" />`).join('')}
+        ${(LITE ? [] : ['image', 'voxcpm', 'whisper', 'genreport', 'reviewingcv', 'legal']).filter((id) => ids.includes(id)).map((id, i) => `<img class="wfl-float f${i + 1}" src="${preview(id)}" alt="" loading="lazy" />`).join('')}
         <div class="wfl-cta-in wfl-reveal">
           <span class="wfl-tag">Sẵn sàng cho bạn!</span>
           <h2 class="wfl-glass">Bắt đầu làm việc cùng<br>AI ngay hôm nay!</h2>
