@@ -16,7 +16,7 @@ export function renderTopNav(containerEl) {
   containerEl.innerHTML = `
     <header class="hn" id="hn">
       <a class="hn-logo" href="/" data-link>
-        <img src="/assets/logo.webp?v=2.5.9" alt="" />
+        <img src="/assets/logo-sm.webp" alt="" />
         <b>PM Tools <span>Hub</span></b>
       </a>
       <nav class="hn-links">
@@ -38,7 +38,7 @@ export function renderTopNav(containerEl) {
         <div id="statusBadgeMount"></div>
         <a class="hn-user" id="hnUser" href="/login" data-link>Đăng nhập</a>
         <a class="hn-cta" href="/" data-link>${svgIcon('grid', 16, 2)}<span>Tất cả công cụ</span></a>
-        <a class="gh-ava" href="https://github.com/buitienthanhdev" target="_blank" rel="noopener" title="GitHub · buitienthanhdev"><span class="gh-ring"></span><img src="https://github.com/buitienthanhdev.png?size=96" alt="buitienthanhdev" /></a>
+        <a class="gh-ava" href="https://github.com/buitienthanhdev" target="_blank" rel="noopener" title="GitHub · buitienthanhdev"><span class="gh-ring"></span><img src="https://github.com/buitienthanhdev.png?size=96" alt="buitienthanhdev" loading="lazy" decoding="async" width="40" height="40" /></a>
       </div>
     </header>
   `;

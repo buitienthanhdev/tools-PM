@@ -47,7 +47,7 @@ export const catalogModule = {
           </div>
           <div class="wfl-nav-cta">
             <button class="wfl-btn" type="button" data-jump="wfl-tools">${svgIcon('arrow', 18, 2)} Bắt đầu ngay</button>
-            <a class="gh-ava" href="https://github.com/buitienthanhdev" target="_blank" rel="noopener" title="GitHub · buitienthanhdev"><span class="gh-ring"></span><img src="https://github.com/buitienthanhdev.png?size=96" alt="buitienthanhdev" /></a>
+            <a class="gh-ava" href="https://github.com/buitienthanhdev" target="_blank" rel="noopener" title="GitHub · buitienthanhdev"><span class="gh-ring"></span><img src="https://github.com/buitienthanhdev.png?size=96" alt="buitienthanhdev" loading="lazy" decoding="async" width="40" height="40" /></a>
           </div>
         </div>
       </nav>

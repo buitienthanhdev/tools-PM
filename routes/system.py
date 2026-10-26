@@ -1,11 +1,14 @@
 """Tình trạng hệ thống, file tải lên, giao diện SPA, xử lý lỗi chung."""
 
+import gzip
+import mimetypes
 import os
+import threading
 import time
 import traceback
 from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify, request, send_from_directory
+from flask import Blueprint, Response, current_app, jsonify, request, send_from_directory
 
 from core import analytics, gpu
 from core import config as hubcfg
@@ -78,9 +81,26 @@ def api_gpu_status():
     return jsonify(gpu.status())
 
 
+def _gzip_json(response):
+    """Nén JSON lớn (bảng kế toán, dashboard admin); bỏ qua stream/SSE và file gửi trực tiếp."""
+    if (response.status_code != 200 or response.direct_passthrough or response.is_streamed
+            or response.mimetype != "application/json" or "Content-Encoding" in response.headers
+            or "gzip" not in request.headers.get("Accept-Encoding", "")):
+        return
+    data = response.get_data()
+    if len(data) < 2048:
+        return
+    response.set_data(gzip.compress(data, 5))
+    response.headers["Content-Encoding"] = "gzip"
+    response.headers["Vary"] = "Accept-Encoding"
+
+
 # ── Cache-Control for all responses ──────────────────────────
 @bp.after_app_request
 def no_cache(response):
+    if getattr(response, "_static_cached", False):
+        return response
+    _gzip_json(response)
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
@@ -133,15 +153,68 @@ def serve_uploads(filename):
     return send_from_directory(UPLOAD_DIR, filename, as_attachment=as_attachment)
 
 
+# ── Static files: gzip + revalidation cache ──────────────────
+# Mã nguồn (html/js/css) luôn hỏi lại máy chủ (ETag → 304, gần như 0 byte) nên
+# deploy xong là có hiệu lực ngay; ảnh/font ít đổi được giữ 1 ngày.
+_TEXT_EXT = {".html", ".js", ".mjs", ".css", ".json", ".svg", ".txt", ".map"}
+_LONG_EXT = {".webp", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".avif", ".woff", ".woff2", ".ttf"}
+mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("font/woff2", ".woff2")
+_static_cache = {}  # path -> (mtime_ns, size, etag, raw, gz)
+_static_lock = threading.Lock()
+
+
+def _static_entry(full):
+    st = full.stat()
+    key = str(full)
+    hit = _static_cache.get(key)
+    if hit and hit[0] == st.st_mtime_ns and hit[1] == st.st_size:
+        return hit
+    raw = full.read_bytes()
+    gz = gzip.compress(raw, 6) if full.suffix.lower() in _TEXT_EXT and len(raw) > 1024 else None
+    entry = (st.st_mtime_ns, st.st_size, f'"{st.st_mtime_ns:x}-{st.st_size:x}"', raw, gz)
+    with _static_lock:
+        _static_cache[key] = entry
+    return entry
+
+
+def _serve_static(rel):
+    full = Path(STATIC_DIR) / rel
+    _, _, etag, raw, gz = _static_entry(full)
+    ext = full.suffix.lower()
+    if ext in _TEXT_EXT or ext not in _LONG_EXT:
+        cache = "no-cache"
+    else:
+        cache = "public, max-age=86400"
+    if etag in request.headers.get("If-None-Match", ""):
+        resp = Response(status=304)
+    else:
+        mime = mimetypes.guess_type(full.name)[0] or "application/octet-stream"
+        if ext in (".js", ".mjs"):
+            mime = "text/javascript"
+        if mime.startswith("text/") or ext in (".js", ".mjs", ".json", ".svg"):
+            mime += "; charset=utf-8"
+        use_gz = gz is not None and "gzip" in request.headers.get("Accept-Encoding", "")
+        resp = Response(gz if use_gz else raw, content_type=mime)
+        if use_gz:
+            resp.headers["Content-Encoding"] = "gzip"
+    if gz is not None:
+        resp.headers["Vary"] = "Accept-Encoding"
+    resp.headers["ETag"] = etag
+    resp.headers["Cache-Control"] = cache
+    resp._static_cached = True
+    return resp
+
+
 # ── SPA Fallback & Route Handling ─────────────────────────────
 @bp.route("/", defaults={"path": ""})
 @bp.route("/<path:path>")
 def serve_spa(path):
     if path:
-        full = Path(STATIC_DIR) / path
-        if full.exists() and full.is_file():
-            return send_from_directory(STATIC_DIR, path)
-    return send_from_directory(STATIC_DIR, "index.html")
+        full = (Path(STATIC_DIR) / path).resolve()
+        if full.is_file() and full.is_relative_to(Path(STATIC_DIR).resolve()):
+            return _serve_static(path)
+    return _serve_static("index.html")
 
 
 @bp.app_errorhandler(404)

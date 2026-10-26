@@ -14,18 +14,80 @@ import { renderSidebar }  from '../layouts/sidebar.js';
 import { renderWorkspaceContainer } from '../layouts/workspace.js';
 
 import { catalogModule } from '../modules/catalog/catalogModule.js';
-import { whisperModule } from '../modules/whisper/whisperModule.js';
-import { voxcpmModule }  from '../modules/voxcpm/voxcpmModule.js';
-import { imageModule }   from '../modules/image/imageModule.js';
-import { genreportModule } from '../modules/genreport/genreportModule.js';
-import { legalModule } from '../modules/legal/legalModule.js';
-import { spacetModule } from '../modules/spacet/spacetModule.js';
-import { reviewingcvModule } from '../modules/reviewingcv/reviewingcvModule.js';
-import { accountingModule } from '../modules/accounting/accountingModule.js';
-import { videoModule } from '../modules/video/videoModule.js';
 import { authModule } from '../modules/auth/authModule.js';
-import { adminModule } from '../modules/auth/adminModule.js';
 import { authStore } from '../stores/authStore.js';
+
+// Công cụ chỉ tải mã khi mở lần đầu (lazy) — trang chủ không phải tải ~500KB JS của mọi công cụ.
+// Metadata ở đây phải khớp với object export trong từng file module.
+function lazyModule(meta, load) {
+  let real = null;
+  let pending = null;
+  const stub = {
+    ...meta,
+    async render(el) {
+      if (!real) {
+        el.innerHTML = '<div class="lazy-loading"><span class="spinner"></span></div>';
+        try {
+          real = await (pending ||= load());
+        } catch (err) {
+          pending = null;
+          throw err;
+        }
+        if (router.currentModule !== stub) return; // người dùng đã chuyển trang trong lúc tải
+      }
+      return real.render(el);
+    },
+    unmount(el) {
+      real?.unmount?.(el);
+    },
+    preload() {
+      if (!real && !pending) pending = load().then((m) => (real = m), (err) => { pending = null; throw err; });
+      return pending;
+    },
+  };
+  return stub;
+}
+
+const whisperModule = lazyModule(
+  { id: 'whisper', name: 'Whisper Speech AI', route: '/Whisper', icon: '🎙️', category: 'Speech AI', status: 'active',
+    description: 'Bóc băng âm thanh, dịch thuật và xuất phụ đề tự động bằng mô hình OpenAI Whisper GPU.' },
+  () => import('../modules/whisper/whisperModule.js').then((m) => m.whisperModule));
+const voxcpmModule = lazyModule(
+  { id: 'voxcpm', name: 'VoxCPM Voice AI', route: '/VoxCPM', icon: '🔊', category: 'Speech AI', status: 'active',
+    description: 'VoxCPM2 (2B) — 30 ngôn ngữ, Voice Design & Cloning, 48kHz WAV. Chạy trực tiếp trong trang.' },
+  () => import('../modules/voxcpm/voxcpmModule.js').then((m) => m.voxcpmModule));
+const imageModule = lazyModule(
+  { id: 'image', name: 'Image Workspace', route: '/Image', icon: '🖼️', category: 'Vision AI', status: 'active',
+    description: 'Chỉnh sửa và nâng cấp ảnh bằng AI theo dự án: ảnh nguồn bên trái, kết quả bên phải.' },
+  () => import('../modules/image/imageModule.js').then((m) => m.imageModule));
+const genreportModule = lazyModule(
+  { id: 'genreport', name: 'Báo Cáo Tiến Độ (GenReport)', route: '/genreport', icon: '📄', category: 'Automation AI', status: 'active',
+    description: 'Tự động sinh báo cáo tiến độ kỹ thuật chuyên sâu bằng AI local (Ollama) và xuất file Word (.docx) chuẩn doanh nghiệp.' },
+  () => import('../modules/genreport/genreportModule.js').then((m) => m.genreportModule));
+const legalModule = lazyModule(
+  { id: 'legal', name: 'AI Tư vấn pháp luật', route: '/legal', icon: '⚖️', category: 'Legal AI', status: 'active',
+    description: 'Hỏi đáp pháp luật bằng AI — trả lời có căn cứ điều luật, thân thiện và đầy đủ.' },
+  () => import('../modules/legal/legalModule.js').then((m) => m.legalModule));
+const spacetModule = lazyModule(
+  { id: 'spacet', name: 'SpaceT', route: '/SpaceT', icon: '🌐', category: 'Geospatial', status: 'active',
+    description: "Quả địa cầu 3D thời gian thực: máy bay, vệ tinh, động đất, thời tiết (God's Eye View)." },
+  () => import('../modules/spacet/spacetModule.js').then((m) => m.spacetModule));
+const reviewingcvModule = lazyModule(
+  { id: 'reviewingcv', name: 'Reviewing CV', route: '/reviewingCV', icon: '📄', category: 'Career AI', status: 'active',
+    description: 'Chấm CV theo tin tuyển dụng: điểm phù hợp, ATS, đề xuất sửa từng dòng (bộ quy tắc ai-job-search).' },
+  () => import('../modules/reviewingcv/reviewingcvModule.js').then((m) => m.reviewingcvModule));
+const accountingModule = lazyModule(
+  { id: 'accounting', name: 'Kế toán AI', route: '/accounting', icon: '🧾', category: 'Finance AI', status: 'active',
+    description: 'Kéo thả chứng từ, ra lệnh bằng tiếng Việt: AI đọc hoá đơn, sao kê, Excel, đối soát, định khoản đề xuất và xuất báo cáo có kiểm chứng.' },
+  () => import('../modules/accounting/accountingModule.js').then((m) => m.accountingModule));
+const videoModule = lazyModule(
+  { id: 'video', name: 'Video Workspace', route: '/video', icon: '🎬', category: 'Video AI', status: 'active',
+    description: 'Tăng độ phân giải, khử nhiễu, phục hồi video nén và nội suy fps bằng REAL-Video-Enhancer trên GPU riêng; có xử lý thử và so sánh trước/sau.' },
+  () => import('../modules/video/videoModule.js').then((m) => m.videoModule));
+const adminModule = lazyModule(
+  { id: 'admin', name: 'Quản trị', route: '/admin', icon: '🛡️', category: 'Platform', status: 'active', hidden: true,
+    description: 'Dashboard theo dõi, quản lý tài khoản và quyền truy cập' },
+  () => import('../modules/auth/adminModule.js').then((m) => m.adminModule));
 
 async function boot() {
   console.log('[PM Tools Hub] Booting platform...');
@@ -86,7 +148,17 @@ async function boot() {
     } catch { globalStore.setSystemHealth({ status: 'connecting', device: 'CPU' }); }
   }
   checkHealth();
-  setInterval(checkHealth, 30000);
+  setInterval(() => { if (!document.hidden) checkHealth(); }, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkHealth(); });
+
+  // Rê chuột / chạm vào link công cụ → tải sẵn mã của công cụ đó để mở tức thì
+  const warm = (e) => {
+    const a = e.target.closest?.('a[href], [data-route]');
+    const path = a && (a.getAttribute('data-route') || a.getAttribute('href'));
+    if (path && path.startsWith('/')) moduleRegistry.getModuleByRoute(path)?.preload?.().catch(() => {});
+  };
+  document.addEventListener('pointerover', warm, { passive: true });
+  document.addEventListener('touchstart', warm, { passive: true });
 
   console.log('[PM Tools Hub] Platform ready!');
 }

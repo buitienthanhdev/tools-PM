@@ -181,7 +181,7 @@ class JobTracker {
     if ('Notification' in window && Notification.permission === 'granted') {
       const notif = new Notification(`🎉 MonaliMeow: ${job.title} Hoàn Tất!`, {
         body: `Kết quả tác vụ ${job.title} đã sẵn sàng. Nhấp để xem ngay!`,
-        icon: '/assets/logo.webp',
+        icon: '/assets/logo-sm.webp',
         tag: job.id,
         renotify: true
       });
@@ -202,7 +202,7 @@ class JobTracker {
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification(`❌ MonaliMeow: ${job.title} Thất Bại`, {
         body: job.message || 'Đã có lỗi xảy ra trong quá trình xử lý.',
-        icon: '/assets/logo.webp'
+        icon: '/assets/logo-sm.webp'
       });
     }
   }

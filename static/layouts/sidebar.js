@@ -49,7 +49,7 @@ export function renderSidebar(containerEl) {
       <div class="sidebar-header">
         <a href="/" class="brand-logo" onclick="event.preventDefault(); window.router.navigate('/');">
           <div class="brand-logo-wrapper">
-            <img src="/assets/logo.webp?v=2.5.9" alt="PM Tools" class="brand-img-logo" />
+            <img src="/assets/logo-sm.webp" alt="PM Tools" class="brand-img-logo" />
             <div class="brand-logo-glow"></div>
           </div>
           <div class="brand-name">

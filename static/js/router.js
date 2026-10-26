@@ -86,9 +86,8 @@ class Router {
 
     if (this.workspaceEl) {
       this.workspaceEl.scrollTop = 0;
-      try {
-        moduleObj.render(this.workspaceEl);
-      } catch (err) {
+      const fail = (err) => {
+        if (this.currentModule !== moduleObj) return;
         console.error(`[Router] Error rendering module '${moduleObj.name}':`, err);
         this.workspaceEl.innerHTML = `
           <div class="panel-card" style="text-align:center; padding:3rem;">
@@ -97,6 +96,11 @@ class Router {
             <button class="btn btn-primary" style="margin-top:1.5rem;" onclick="window.router.navigate('/')">Về Trang Chủ</button>
           </div>
         `;
+      };
+      try {
+        Promise.resolve(moduleObj.render(this.workspaceEl)).catch(fail);
+      } catch (err) {
+        fail(err);
       }
     }
   }
