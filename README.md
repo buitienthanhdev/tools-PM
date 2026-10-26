@@ -115,6 +115,20 @@ Watchdog tự bật lại server nếu chết. Nhật ký: `logs/server.log`, `l
 (manifest theo từng văn bản). Đổi nội dung hoặc model embedding thì chỉ văn bản đó được tính lại. Các
 file `vec_*.npy` cũ được tự động gộp vào kho ở lần chạy đầu tiên.
 
+## Giao diện: build bản gộp (`static/dist/`)
+
+Sau khi sửa bất kỳ file JS/CSS trong `static/`, chạy rồi commit cả `static/dist/`:
+
+```
+python scripts/build_frontend.py   # cần Node (dùng npx esbuild)
+```
+
+- Server phục vụ bản gộp + rút gọn (`dist/`) chỉ khi `dist/STAMP` khớp mã băm mã nguồn hiện tại.
+  Quên build → server tự dùng mã nguồn chưa gộp (vẫn đúng, chỉ chậm hơn) và in cảnh báo `[static] dist/ cũ`.
+- JS/CSS lõi được phục vụ ở `/v/<mã>/…` với cache 1 năm; mã đổi khi mã nguồn đổi nên deploy có hiệu lực ngay.
+- Máy yếu (≤4 nhân / ≤4GB RAM / tiết kiệm dữ liệu / giảm chuyển động) tự bật chế độ `.lite`:
+  font hệ thống, tắt blur và hiệu ứng trang trí (`static/styles/perf.css`).
+
 ## Kiểm thử và CI
 
 ```

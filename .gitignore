@@ -49,3 +49,6 @@ modules/video_workspace/vendor/
 bin/
 .gev-cache/
 .gev-logs/
+
+# Bản gộp giao diện (scripts/build_frontend.py) — phải commit để deploy bằng git có bản gộp
+!static/dist/

@@ -1,7 +1,6 @@
 """Tình trạng hệ thống, file tải lên, giao diện SPA, xử lý lỗi chung."""
 
 import gzip
-import hashlib
 import mimetypes
 import os
 import re
@@ -12,7 +11,7 @@ from pathlib import Path
 
 from flask import Blueprint, Response, current_app, jsonify, request, send_from_directory
 
-from core import analytics, gpu
+from core import analytics, assets, gpu
 from core import config as hubcfg
 from core.jobs import UPLOAD_DIR
 from routes import image, speech
@@ -212,21 +211,25 @@ def _serve_static(rel):
 # index.html trỏ JS/CSS lõi vào /v/<mã>/…; import tương đối trong JS tự kế thừa tiền tố
 # nên mọi module được cache vĩnh viễn (0 request khi vào lại). Sửa bất kỳ file JS/CSS
 # nào → mã đổi → trình duyệt tải bản mới, không cần khởi động lại server.
-_CODE_EXT = (".js", ".css")
-_VERSIONED = re.compile(r"""(["'])/((?:js|styles|stores|services|layouts|components|modules|fonts)/[^"'?]+\.(?:js|css))\1""")
-_ver = {"at": 0.0, "value": ""}
+# Có static/dist/ (scripts/build_frontend.py) với STAMP khớp mã nguồn → phục vụ bản gộp.
+_VERSIONED = re.compile(r"""(["'])/((?:dist|js|styles|stores|services|layouts|components|modules|fonts)/[^"'?]+\.(?:js|css))\1""")
+_ver = {"at": 0.0, "sig": None, "value": "", "dist": False}
 
 
 def _asset_version():
     now = time.monotonic()
     if now - _ver["at"] > 2:
-        h = hashlib.sha1()
-        for root, _, files in os.walk(STATIC_DIR):
-            for name in files:
-                if name.endswith(_CODE_EXT):
-                    st = os.stat(os.path.join(root, name))
-                    h.update(f"{root}/{name}:{st.st_mtime_ns}:{st.st_size};".encode())
-        _ver.update(at=now, value=h.hexdigest()[:10])
+        sig = assets.signature(STATIC_DIR)
+        if sig != _ver["sig"]:
+            ver = assets.source_hash(STATIC_DIR)
+            try:
+                stamp = (Path(STATIC_DIR) / assets.DIST / "STAMP").read_text("ascii").strip()
+            except OSError:
+                stamp = ""
+            if stamp and stamp != ver:
+                print(f"[static] dist/ cũ (STAMP {stamp} ≠ {ver}) → dùng mã nguồn chưa gộp; chạy scripts/build_frontend.py")
+            _ver.update(sig=sig, value=ver, dist=stamp == ver)
+        _ver["at"] = now
     return _ver["value"]
 
 
@@ -235,7 +238,8 @@ _index_cache = {}
 
 def _serve_index():
     ver = _asset_version()
-    _, _, etag, raw, _ = _static_entry(Path(STATIC_DIR) / "index.html")
+    index = Path(STATIC_DIR) / (f"{assets.DIST}/index.html" if _ver["dist"] else "index.html")
+    _, _, etag, raw, _ = _static_entry(index)
     key = (ver, etag)
     if key not in _index_cache:
         html = _VERSIONED.sub(lambda m: f"{m[1]}/v/{ver}/{m[2]}{m[1]}", raw.decode("utf-8")).encode("utf-8")

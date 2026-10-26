@@ -274,3 +274,35 @@ def test_genreport_rejects_empty_notes():
 
     with pytest.raises(ValueError):
         g.generate_word_report({"raw_text": "   "})
+
+
+def test_static_versioned_gzip_and_cache(app):
+    import re
+
+    client = app.app.test_client()
+    r = client.get("/", headers={"Accept-Encoding": "gzip"})
+    assert r.headers["Content-Encoding"] == "gzip" and r.headers["Cache-Control"] == "no-cache"
+    assert client.get("/", headers={"If-None-Match": r.headers["ETag"]}).status_code == 304
+    import gzip
+
+    html = gzip.decompress(r.data).decode()
+    ver, main = re.search(r'src="/v/([0-9a-f]{10})/((?:dist|js)/main\.js)"', html).groups()
+    asset = client.get(f"/v/{ver}/{main}")
+    assert asset.status_code == 200 and "immutable" in asset.headers["Cache-Control"]
+    # trang cũ xin phiên bản khác → vẫn có file nhưng không được cache lâu
+    assert client.get(f"/v/0000000000/{main}").headers["Cache-Control"] == "no-cache"
+    # thoát khỏi static/ → trả index chứ không lộ mã nguồn server
+    assert b"from flask" not in client.get("/../app.py").data
+
+
+def test_stale_dist_falls_back_to_sources(app, monkeypatch):
+    from core import assets
+    from routes import system
+
+    if not os.path.exists(os.path.join(system.STATIC_DIR, "dist", "STAMP")):
+        pytest.skip("chưa build static/dist")
+    monkeypatch.setattr(assets, "source_hash", lambda _d: "0000000000")
+    monkeypatch.setitem(system._ver, "sig", None)
+    monkeypatch.setitem(system._ver, "at", 0.0)
+    html = app.app.test_client().get("/").data.decode()
+    assert "/v/0000000000/js/main.js" in html and "/dist/" not in html

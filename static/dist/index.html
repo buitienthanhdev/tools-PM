@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PM Tools Hub — AI Workspace Platform</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/webp" href="/assets/logo-sm.webp" />
+
+  <!-- Styles -->
+  <script>
+    // Máy yếu (ít nhân/RAM) hoặc người dùng muốn giảm chuyển động → tắt hiệu ứng nặng
+    (function () {
+      var n = navigator, c = n.hardwareConcurrency || 4, m = n.deviceMemory || 8;
+      var slow = c <= 4 || m <= 4 || (n.connection && n.connection.saveData) ||
+                 (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+      if (slow) { document.documentElement.classList.add('lite'); return; }
+      // Máy thường: font tự host (không gọi Google). Máy lite: dùng font hệ thống, 0 byte font.
+      var h = document.head;
+      ['plus-jakarta-sans-latin', 'plus-jakarta-sans-vietnamese'].forEach(function (f) {
+        var l = document.createElement('link');
+        l.rel = 'preload'; l.as = 'font'; l.type = 'font/woff2'; l.crossOrigin = '';
+        l.href = '/fonts/' + f + '.woff2';
+        h.appendChild(l);
+      });
+      var css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = '/fonts/fonts.css';
+      h.appendChild(css);
+    })();
+  </script>
+  <link rel="stylesheet" href="/dist/app.css" />
+  <link rel="modulepreload" href="/dist/main.js" />
+  <link rel="modulepreload" href="/dist/c-2MTW4ZAX.js" />
+  <link rel="modulepreload" href="/dist/c-A7EUOZAY.js" />
+  <link rel="modulepreload" href="/dist/c-RIJMV2JA.js" />
+</head>
+<body>
+  <div class="app-container">
+    <div id="sidebarMount"></div>
+    <div class="main-wrapper">
+      <div id="topNavMount"></div>
+      <div id="workspaceMount" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>
+    </div>
+  </div>
+
+  <!-- Single module entry — static imports share singletons correctly -->
+  <script type="module" src="/dist/main.js"></script>
+</body>
+</html>
