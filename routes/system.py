@@ -1,8 +1,10 @@
 """Tình trạng hệ thống, file tải lên, giao diện SPA, xử lý lỗi chung."""
 
 import gzip
+import hashlib
 import mimetypes
 import os
+import re
 import threading
 import time
 import traceback
@@ -206,22 +208,79 @@ def _serve_static(rel):
     return resp
 
 
+# ── Đường dẫn có phiên bản: /v/<mã>/js/main.js ────────────────
+# index.html trỏ JS/CSS lõi vào /v/<mã>/…; import tương đối trong JS tự kế thừa tiền tố
+# nên mọi module được cache vĩnh viễn (0 request khi vào lại). Sửa bất kỳ file JS/CSS
+# nào → mã đổi → trình duyệt tải bản mới, không cần khởi động lại server.
+_CODE_EXT = (".js", ".css")
+_VERSIONED = re.compile(r"""(["'])/((?:js|styles|stores|services|layouts|components|modules|fonts)/[^"'?]+\.(?:js|css))\1""")
+_ver = {"at": 0.0, "value": ""}
+
+
+def _asset_version():
+    now = time.monotonic()
+    if now - _ver["at"] > 2:
+        h = hashlib.sha1()
+        for root, _, files in os.walk(STATIC_DIR):
+            for name in files:
+                if name.endswith(_CODE_EXT):
+                    st = os.stat(os.path.join(root, name))
+                    h.update(f"{root}/{name}:{st.st_mtime_ns}:{st.st_size};".encode())
+        _ver.update(at=now, value=h.hexdigest()[:10])
+    return _ver["value"]
+
+
+_index_cache = {}
+
+
+def _serve_index():
+    ver = _asset_version()
+    _, _, etag, raw, _ = _static_entry(Path(STATIC_DIR) / "index.html")
+    key = (ver, etag)
+    if key not in _index_cache:
+        html = _VERSIONED.sub(lambda m: f"{m[1]}/v/{ver}/{m[2]}{m[1]}", raw.decode("utf-8")).encode("utf-8")
+        _index_cache.clear()
+        _index_cache[key] = (html, gzip.compress(html, 6), f'"{ver}-{etag.strip(chr(34))}"')
+    html, gz, tag = _index_cache[key]
+    if tag in request.headers.get("If-None-Match", ""):
+        resp = Response(status=304)
+    else:
+        use_gz = "gzip" in request.headers.get("Accept-Encoding", "")
+        resp = Response(gz if use_gz else html, content_type="text/html; charset=utf-8")
+        if use_gz:
+            resp.headers["Content-Encoding"] = "gzip"
+    resp.headers["Vary"] = "Accept-Encoding"
+    resp.headers["ETag"] = tag
+    resp.headers["Cache-Control"] = "no-cache"
+    resp._static_cached = True
+    return resp
+
+
 # ── SPA Fallback & Route Handling ─────────────────────────────
 @bp.route("/", defaults={"path": ""})
 @bp.route("/<path:path>")
 def serve_spa(path):
-    if path:
+    immutable = False
+    m = re.match(r"v/([0-9a-f]{10})/(.+)", path)
+    if m:
+        path = m[2]
+        # Trang cũ xin phiên bản cũ → vẫn trả file hiện tại nhưng không cho cache lâu
+        immutable = m[1] == _asset_version()
+    if path and path != "index.html":
         full = (Path(STATIC_DIR) / path).resolve()
         if full.is_file() and full.is_relative_to(Path(STATIC_DIR).resolve()):
-            return _serve_static(path)
-    return _serve_static("index.html")
+            resp = _serve_static(path)
+            if immutable:
+                resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return resp
+    return _serve_index()
 
 
 @bp.app_errorhandler(404)
 def handle_404(e):
     if request.path.startswith("/api/"):
         return jsonify({"error": f"API route not found: {request.path}"}), 404
-    return send_from_directory(STATIC_DIR, "index.html")
+    return _serve_index()
 
 
 @bp.app_errorhandler(Exception)
