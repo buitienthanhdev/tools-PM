@@ -21,7 +21,9 @@ if __name__ == "__main__":
     serve(
         app,
         listen="127.0.0.1:5000",
-        threads=8,
+        # Mỗi kết nối SSE theo dõi tác vụ và mỗi request AI dài giữ 1 luồng suốt thời gian chạy;
+        # 8 luồng cũ bị chiếm hết → /api/ping không được trả lời → watchdog tưởng chết và kill server.
+        threads=64,
         channel_timeout=300,
-        connection_limit=100,
+        connection_limit=500,
     )

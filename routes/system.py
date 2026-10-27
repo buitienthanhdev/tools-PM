@@ -72,6 +72,12 @@ def _tools_health():
     return out
 
 
+@bp.route("/api/ping")
+def api_ping():
+    """Cho watchdog: không đụng torch/GPU/đĩa, trả lời ngay cả khi server đang bận."""
+    return jsonify({"ok": True})
+
+
 @bp.route("/api/health/tools")
 def api_health_tools():
     return jsonify({"tools": _tools_health(), "gpu": gpu.status()})

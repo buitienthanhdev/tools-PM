@@ -30,7 +30,10 @@ def api_job_stream(job_id):
             return denied
 
     def generate():
-        while True:
+        # Giới hạn 2 phút/kết nối: client mất mạng mà không đóng thì luồng vẫn được trả lại;
+        # EventSource phía trình duyệt tự nối lại (jobTracker.verifyAndStreamJob).
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
             if job_id not in jobs:
                 yield f'data: {json.dumps({"error": "Tác vụ không tìm thấy"})}\n\n'
                 break

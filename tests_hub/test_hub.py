@@ -328,3 +328,11 @@ def test_gpu_switch_evicts_others_and_idle_release(monkeypatch):
     evicted.clear()
     assert gpu.release("test") is True
     assert sorted(evicted) == ["a", "b"] and gpu.status()["family"] is None
+
+
+def test_ping_and_service_worker(app):
+    c = app.app.test_client()
+    assert c.get("/api/ping").get_json() == {"ok": True}
+    sw = c.get("/sw.js")
+    assert sw.status_code == 200 and sw.mimetype == "text/javascript"
+    assert b"(api|uploads)" in sw.data  # không bao giờ cache API

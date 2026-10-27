@@ -159,7 +159,7 @@ _PREFIX_MODULE = [
     ("/api/accounting", "accounting"),
     ("/api/video", "video"),
 ]
-_PUBLIC = ("/api/auth/", "/api/health", "/api/track/")  # track: beacon lượt xem/lỗi trình duyệt (giới hạn tốc độ)
+_PUBLIC = ("/api/auth/", "/api/health", "/api/ping", "/api/track/")  # track: beacon lượt xem/lỗi trình duyệt (giới hạn tốc độ)
 
 
 def _deny(code, msg, status):

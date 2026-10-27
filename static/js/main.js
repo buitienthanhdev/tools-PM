@@ -140,6 +140,11 @@ async function boot() {
     });
   });
 
+  // Lưới an toàn: server khởi động lại vẫn mở được trang (static/sw.js)
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  }
+
   // 6. Health polling
   async function checkHealth() {
     try {

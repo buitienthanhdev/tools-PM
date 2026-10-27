@@ -47,9 +47,12 @@ for path in cf_candidates:
 
 CONFIG_FILE = str(BASE_DIR / "cloudflared-config.yml")
 TUNNEL_ID = "f8c3bf93-35c2-43ae-86ce-8ad5f4ac25ce"
-HEALTH_URL = "http://127.0.0.1:5000/api/health"
+# /api/ping không đụng torch/GPU nên chỉ chậm khi server thật sự treo. Cho 6 lần × (10s chờ + 5s) ≈ 90s
+# trước khi kill: server bận (đang tải model, nhiều tác vụ) không bị giết oan làm đứt tác vụ của người dùng.
+HEALTH_URL = "http://127.0.0.1:5000/api/ping"
 CHECK_INTERVAL = 5  # seconds
-MAX_FAILURES = 3
+CHECK_TIMEOUT = 10
+MAX_FAILURES = 6
 STARTUP_TASK = "PM Tools Hub Watchdog"
 
 # SpaceT (God's Eye View): vite preview on 4173, public gateway on 4174.
@@ -246,11 +249,11 @@ def start_spacet_tunnel():
     logger.info(f"SpaceT Tunnel started with PID: {spacet_tunnel_proc.pid}")
 
 
-def check_url(url):
+def check_url(url, timeout=4):
     """Return True when the URL answers 200."""
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "PMTools-Watchdog/1.0"})
-        with urllib.request.urlopen(req, timeout=4) as response:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
             return response.status == 200
     except Exception:
         return False
@@ -258,7 +261,7 @@ def check_url(url):
 
 def check_health():
     """Ping local health endpoint."""
-    return check_url(HEALTH_URL)
+    return check_url(HEALTH_URL, CHECK_TIMEOUT)
 
 
 def check_spacet():
@@ -292,8 +295,13 @@ def main():
 
     while True:
         try:
-            # 1. Check Python Server Health
-            if check_health():
+            # 1. Check Python Server Health (process đã thoát → khởi động lại ngay, không chờ)
+            if server_proc is not None and server_proc.poll() is not None:
+                logger.error(f"Server process exited (code {server_proc.returncode})! Restarting...")
+                start_server()
+                fail_count = 0
+                time.sleep(5)
+            elif check_health():
                 if fail_count > 0:
                     logger.info("Server recovered to healthy state!")
                 fail_count = 0

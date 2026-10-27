@@ -49,16 +49,21 @@ class JobTracker {
     }
   }
 
-  verifyAndStreamJob(jobId) {
-    // Check if server still recognizes this job
+  verifyAndStreamJob(jobId, attempt = 0) {
+    // Check if server still recognizes this job. Chỉ 404 mới là tác vụ mất thật;
+    // mất mạng / 502-504 (server đang khởi động lại) → thử lại dần, không báo hỏng oan.
+    const retry = () => {
+      if (attempt >= 20) return this.markJobDead(jobId);
+      setTimeout(() => this.verifyAndStreamJob(jobId, attempt + 1), Math.min(2000 * (attempt + 1), 15000));
+    };
     fetch(`/api/job/${jobId}`)
       .then(res => {
-        if (!res.ok) {
-          throw new Error('Job not found on server');
-        }
-        return res.json();
+        if (res.status === 404) return { error: 'not found' };
+        if (!res.ok) return null;
+        return res.json().catch(() => null);
       })
       .then(jobData => {
+        if (jobData === null) return retry();
         if (jobData && !jobData.error) {
           const existing = this.jobs.get(jobId) || {};
           const updated = { ...existing, ...jobData };
@@ -73,9 +78,7 @@ class JobTracker {
           this.markJobDead(jobId);
         }
       })
-      .catch(() => {
-        this.markJobDead(jobId);
-      });
+      .catch(retry);
   }
 
   markJobDead(jobId) {
