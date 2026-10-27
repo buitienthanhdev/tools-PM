@@ -25,6 +25,7 @@ DEFAULTS = {
     "legal_min_similarity": 0.35,  # dưới ngưỡng này (cosine) coi như chưa có căn cứ
     "upload_ttl_hours": 24,
     "realesrgan_dir": os.path.join(BASE_DIR, "modules", "image_enhancer", "bin"),
+    "gpu_idle_release_seconds": 300,  # GPU rảnh quá lâu → nhả mọi model khỏi VRAM; 0 = không tự nhả
 }
 
 _lock = threading.Lock()
@@ -49,6 +50,8 @@ def _load():
     cfg["ollama_url"] = env.get(
         "PM_OLLAMA_URL", env.get("OLLAMA_HOST_URL", cfg["ollama_url"])
     )
+    if env.get("PM_GPU_IDLE_SECONDS"):
+        cfg["gpu_idle_release_seconds"] = int(env["PM_GPU_IDLE_SECONDS"])
     cfg["admin_email"] = env.get("PM_ADMIN_EMAIL", cfg["admin_email"]).strip().lower()
     for key, var in (
         ("genreport", "PM_MODEL_GENREPORT"),

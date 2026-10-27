@@ -82,6 +82,18 @@ def api_gpu_status():
     return jsonify(gpu.status())
 
 
+@bp.route("/api/gpu/release", methods=["POST"])
+def api_gpu_release():
+    """Admin: nhả mọi model khỏi VRAM ngay (không chờ hết thời gian rảnh)."""
+    from core import auth
+
+    if not auth.is_admin():
+        return jsonify({"error": "Chỉ admin"}), 403
+    if not gpu.release("admin"):
+        return jsonify({"error": "GPU đang chạy tác vụ, thử lại sau"}), 409
+    return jsonify({"ok": True, **gpu.status()})
+
+
 def _gzip_json(response):
     """Nén JSON lớn (bảng kế toán, dashboard admin); bỏ qua stream/SSE và file gửi trực tiếp."""
     if (response.status_code != 200 or response.direct_passthrough or response.is_streamed

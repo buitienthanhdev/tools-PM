@@ -306,3 +306,25 @@ def test_stale_dist_falls_back_to_sources(app, monkeypatch):
     monkeypatch.setitem(system._ver, "at", 0.0)
     html = app.app.test_client().get("/").data.decode()
     assert "/v/0000000000/js/main.js" in html and "/dist/" not in html
+
+
+def test_gpu_switch_evicts_others_and_idle_release(monkeypatch):
+    from core import gpu
+
+    evicted = []
+    monkeypatch.setattr(gpu, "_evictors", {"a": lambda: evicted.append("a"), "b": lambda: evicted.append("b")})
+    monkeypatch.setattr(gpu, "_free_cuda", lambda: None)
+    monkeypatch.setattr(gpu, "_ensure_reaper", lambda: None)
+    monkeypatch.setitem(gpu._state, "family", None)
+    with gpu.task("t1", "a"):
+        pass
+    with gpu.task("t2", "b"):  # đổi họ → nhả họ khác, giữ họ đang chạy
+        pass
+    assert evicted == ["a"]
+    assert gpu.status()["family"] == "b" and gpu.status()["release_in"] is not None
+    # đang chạy tác vụ thì không được nhả
+    with gpu.task("t3", "b"):
+        assert gpu.release("test") is False
+    evicted.clear()
+    assert gpu.release("test") is True
+    assert sorted(evicted) == ["a", "b"] and gpu.status()["family"] is None

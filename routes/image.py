@@ -31,6 +31,23 @@ MAX_IMAGE_AI_ENHANCE_PIXELS = 8_000_000
 IMAGE_UPLOADS = {}
 IMAGE_UPLOADS_LOCK = threading.RLock()
 IMAGE_AI_LOCK = threading.Lock()
+
+
+def _evict_image_ai():
+    """Đóng mọi phiên ONNX (CUDA) của công cụ ảnh để nhả VRAM; lần dùng sau tự nạp lại."""
+    import sys
+
+    for name, attr in (("ai_engine", "_session"), ("bg_remove", "_session"),
+                       ("face_restore", "_session"), ("restore_engine", "_sessions")):
+        mod = sys.modules.get(f"modules.image_ai.{name}")
+        if mod is None:
+            continue  # chưa từng nạp → không giữ VRAM
+        lock = getattr(mod, "_session_lock", None) or getattr(mod, "_lock", None)
+        with lock or threading.Lock():
+            setattr(mod, attr, {} if attr == "_sessions" else None)
+
+
+gpu.register("imageai", _evict_image_ai)
 IMAGE_AI_CAPACITY_LOCK = threading.Lock()
 MAX_PENDING_IMAGE_AI_JOBS = 3
 IMAGE_AI_TOOLS = {
@@ -251,7 +268,7 @@ def _run_image_ai(job_id, tool, image_path, mask_path=None, background="transpar
     try:
         job = jobs[job_id]
         job.update(status="processing", progress=5, message="Đang chờ tác vụ AI khác...")
-        with IMAGE_AI_LOCK:
+        with IMAGE_AI_LOCK, gpu.task(f"imageai:{job_id}", "imageai", on_wait=_gpu_wait_msg(job_id)):
             if job.get("status") == "cancelled":
                 return
 
