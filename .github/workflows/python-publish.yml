@@ -15,7 +15,7 @@ jobs:
         text: ${{ github.event.head_commit.message }}
         regex: '^Release ([^ ]+)'
     - name: Set up Python
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
         python-version: '3.12'
     - name: Install dependencies
@@ -24,7 +24,7 @@ jobs:
         pip install setuptools wheel twine build
     - name: Release
       if: ${{ steps.regex-match.outputs.match != '' }}
-      uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v2
+      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v2
       with:
         tag_name: v${{ steps.regex-match.outputs.group1 }}
     - name: Build and publish
